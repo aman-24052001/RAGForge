@@ -2,481 +2,662 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RAGForge — Document Intelligence</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>RAGForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:        #0a0a0f;
-    --surface:   #13131a;
-    --border:    #2a2a38;
-    --blue:      #2B5CFF;
-    --yellow:    #f5c518;
-    --green:     #00e5a0;
-    --red:       #ff4545;
-    --text:      #e8e8f0;
-    --muted:     #6b6b80;
-    --mono:      'JetBrains Mono', monospace;
-    --sans:      'Space Grotesk', sans-serif;
-  }
+/* ── Neo-Brutalist Design System ─────────────────────────────────────── */
+:root {
+  --cream:   #F5F0E8;
+  --black:   #0A0A0A;
+  --blue:    #2B5CFF;
+  --yellow:  #FFE500;
+  --green:   #00FF87;
+  --red:     #FF3B3B;
+  --orange:  #FF6B2B;
+  --white:   #FFFFFF;
+  --border:  3px solid #0A0A0A;
+  --shadow:  4px 4px 0px #0A0A0A;
+  --shadow-lg: 6px 6px 0px #0A0A0A;
+  --sans: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
+html { font-size: 16px; }
 
-  /* ── Header ── */
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 16px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky; top: 0;
-    background: var(--bg);
-    z-index: 100;
-  }
-  .logo {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-  .logo span { color: var(--blue); }
-  .badge {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    padding: 3px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--muted);
-  }
-  #status-badge {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-family: var(--mono);
-  }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-  .dot.green { background: var(--green); }
-  .dot.yellow { background: var(--yellow); }
+body {
+  background: var(--cream);
+  color: var(--black);
+  font-family: var(--sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
 
-  /* ── Layout ── */
-  main {
+/* ── Header ──────────────────────────────────────────────────────────── */
+header {
+  background: var(--black);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: var(--border);
+}
+
+.logo {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--white);
+  letter-spacing: -0.03em;
+}
+.logo span { color: var(--yellow); }
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--cream);
+  border: 2px solid var(--black);
+  border-radius: 0;
+  padding: 5px 10px;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--black);
+  box-shadow: 2px 2px 0 var(--yellow);
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+.dot.green  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.dot.red    { background: var(--red); }
+
+/* ── Tag strip ───────────────────────────────────────────────────────── */
+.tag-strip {
+  background: var(--blue);
+  padding: 8px 16px;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: var(--border);
+  scrollbar-width: none;
+}
+.tag-strip::-webkit-scrollbar { display: none; }
+.tag {
+  background: var(--yellow);
+  border: 2px solid var(--black);
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--black);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Main layout ─────────────────────────────────────────────────────── */
+main { padding: 0; }
+
+/* ── Section blocks ─────────────────────────────────────────────────── */
+.section {
+  border-bottom: var(--border);
+  padding: 16px;
+}
+
+.section-label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: var(--yellow);
+  display: inline-block;
+  padding: 2px 8px;
+  border: 2px solid var(--black);
+  margin-bottom: 12px;
+}
+
+/* ── Upload zone ─────────────────────────────────────────────────────── */
+#drop-zone {
+  border: 3px dashed var(--black);
+  background: var(--white);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.1s;
+  box-shadow: var(--shadow);
+  position: relative;
+}
+#drop-zone:active,
+#drop-zone.drag-over {
+  background: var(--yellow);
+}
+#drop-zone .dz-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 8px;
+}
+#drop-zone .dz-main {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--black);
+  display: block;
+  margin-bottom: 4px;
+}
+#drop-zone .dz-sub {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: #555;
+}
+#file-input { display: none; }
+
+#upload-status {
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  min-height: 18px;
+  padding: 4px 8px;
+  border: 2px solid transparent;
+}
+#upload-status.loading {
+  background: var(--yellow);
+  border-color: var(--black);
+  color: var(--black);
+}
+#upload-status.success {
+  background: var(--green);
+  border-color: var(--black);
+  color: var(--black);
+}
+#upload-status.error {
+  background: var(--red);
+  border-color: var(--black);
+  color: var(--white);
+}
+
+/* ── Settings sliders ────────────────────────────────────────────────── */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.slider-row label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--black);
+  min-width: 110px;
+}
+.slider-row input[type=range] {
+  flex: 1;
+  accent-color: var(--blue);
+  height: 4px;
+  cursor: pointer;
+}
+.slider-val {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--blue);
+  color: var(--white);
+  border: 2px solid var(--black);
+  padding: 1px 7px;
+  min-width: 32px;
+  text-align: center;
+}
+
+/* ── Docs list ───────────────────────────────────────────────────────── */
+.doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--white);
+  border: 2px solid var(--black);
+  padding: 5px 10px;
+  margin: 0 6px 6px 0;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  box-shadow: 2px 2px 0 var(--black);
+}
+.doc-chip .chip-dot {
+  width: 6px; height: 6px;
+  background: var(--blue);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Query bar ───────────────────────────────────────────────────────── */
+.query-section {
+  border-bottom: var(--border);
+  padding: 16px;
+  background: var(--black);
+}
+.query-section .section-label {
+  background: var(--blue);
+  color: var(--white);
+  border-color: var(--yellow);
+}
+.query-wrap {
+  display: flex;
+  gap: 0;
+  border: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+#query-input {
+  flex: 1;
+  background: var(--white);
+  border: none;
+  outline: none;
+  padding: 12px 14px;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--black);
+  min-width: 0;
+}
+#query-input::placeholder { color: #999; }
+#search-btn {
+  background: var(--yellow);
+  border: none;
+  border-left: var(--border);
+  padding: 12px 18px;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--black);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+#search-btn:active { background: var(--green); }
+#search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Pipeline bar ────────────────────────────────────────────────────── */
+.pipeline-bar {
+  background: var(--black);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: var(--border);
+  scrollbar-width: none;
+  min-height: 42px;
+}
+.pipeline-bar::-webkit-scrollbar { display: none; }
+
+.pipe-step {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border: 2px solid #333;
+  color: #555;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.pipe-step.active {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--black);
+  box-shadow: 0 0 8px rgba(255,229,0,0.5);
+}
+.pipe-step.done {
+  background: var(--green);
+  border-color: var(--green);
+  color: var(--black);
+}
+.pipe-arrow { color: #444; font-size: 0.65rem; flex-shrink: 0; }
+
+/* ── Results ─────────────────────────────────────────────────────────── */
+#results-area {
+  padding: 16px;
+  min-height: 200px;
+}
+
+/* Empty state */
+#empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 12px;
+}
+#empty-state .es-icon { font-size: 3rem; }
+#empty-state p {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: #666;
+  line-height: 1.6;
+  max-width: 240px;
+}
+
+/* LLM answer box */
+#llm-box {
+  display: none;
+  background: var(--blue);
+  border: var(--border);
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.llm-header {
+  background: var(--yellow);
+  border-bottom: var(--border);
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#llm-text {
+  padding: 14px;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--white);
+  font-weight: 500;
+}
+
+/* Chunks */
+.chunks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.chunks-count {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: var(--black);
+  color: var(--yellow);
+  padding: 3px 10px;
+  border: 2px solid var(--black);
+}
+
+.chunk-card {
+  border: var(--border);
+  background: var(--white);
+  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.chunk-head {
+  display: flex;
+  align-items: stretch;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.1s;
+}
+.chunk-head:active { background: var(--cream); }
+
+.chunk-rank-badge {
+  background: var(--blue);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: var(--border);
+  min-width: 42px;
+  flex-shrink: 0;
+}
+.chunk-rank-badge.top { background: var(--yellow); color: var(--black); }
+
+.chunk-meta-wrap {
+  flex: 1;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.chunk-doc-id {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+.chunk-score-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-track {
+  flex: 1;
+  height: 5px;
+  background: #e0e0e0;
+  border: 1px solid var(--black);
+  overflow: hidden;
+}
+.score-fill {
+  height: 100%;
+  background: var(--green);
+  border-right: 1px solid var(--black);
+  transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+.score-num {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--black);
+  min-width: 34px;
+  text-align: right;
+}
+
+.chunk-toggle {
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 0.7rem;
+  color: #888;
+  border-left: var(--border);
+  flex-shrink: 0;
+}
+
+.chunk-body {
+  display: none;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.7;
+  color: #222;
+  background: var(--cream);
+  border-top: var(--border);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.chunk-body.open { display: block; }
+
+/* ── Floating clear btn ──────────────────────────────────────────────── */
+#clear-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 16px;
+  background: var(--red);
+  color: var(--white);
+  border: var(--border);
+  box-shadow: var(--shadow);
+  padding: 10px 16px;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: none;
+  z-index: 50;
+  transition: transform 0.1s;
+}
+#clear-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--black); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--cream); }
+::-webkit-scrollbar-thumb { background: var(--black); }
+
+/* ── Desktop upgrade (min 640px) ─────────────────────────────────────── */
+@media (min-width: 640px) {
+  .section, .query-section { padding: 20px 24px; }
+  #results-area { padding: 20px 24px; }
+  .pipeline-bar { padding: 10px 24px; }
+  .tag-strip { padding: 8px 24px; }
+  header { padding: 14px 24px; }
+
+  .desktop-grid {
     display: grid;
-    grid-template-columns: 340px 1fr;
-    flex: 1;
-    min-height: 0;
-    height: calc(100vh - 57px);
+    grid-template-columns: 320px 1fr;
+    min-height: calc(100vh - 90px);
   }
-
-  /* ── Left panel ── */
-  .panel-left {
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .panel-section {
-    padding: 20px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .panel-label {
-    font-size: 0.65rem;
-    font-family: var(--mono);
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 12px;
-  }
-
-  /* Drop zone */
-  #drop-zone {
-    border: 1.5px dashed var(--border);
-    border-radius: 8px;
-    padding: 28px 16px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  #drop-zone:hover, #drop-zone.drag-over {
-    border-color: var(--blue);
-    background: rgba(43,92,255,0.05);
-  }
-  #drop-zone .icon { font-size: 1.8rem; margin-bottom: 8px; }
-  #drop-zone p { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
-  #drop-zone strong { color: var(--text); }
-  #file-input { display: none; }
-
-  /* Upload progress */
-  #upload-status {
-    margin-top: 10px;
-    font-size: 0.75rem;
-    font-family: var(--mono);
-    min-height: 18px;
-    transition: color 0.2s;
-  }
-  #upload-status.success { color: var(--green); }
-  #upload-status.error   { color: var(--red); }
-  #upload-status.loading { color: var(--yellow); }
-
-  /* Docs list */
-  .docs-list {
-    flex: 1;
+  .col-left {
+    border-right: var(--border);
     overflow-y: auto;
-    padding: 12px 20px;
   }
-  .doc-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    margin-bottom: 6px;
-    font-size: 0.78rem;
-    font-family: var(--mono);
-  }
-  .doc-item .doc-name {
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
-  }
-  .doc-item .doc-chunks {
-    color: var(--muted);
-    font-size: 0.65rem;
-    white-space: nowrap;
-  }
-
-  /* Settings */
-  .settings-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 0.78rem;
-  }
-  .settings-row label {
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.7rem;
-  }
-  .settings-row input[type=range] {
-    width: 100px;
-    accent-color: var(--blue);
-  }
-  .settings-row .val {
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    color: var(--yellow);
-    width: 28px;
-    text-align: right;
-  }
-
-  /* ── Right panel ── */
-  .panel-right {
+  .col-right {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
   }
-
-  /* Query bar */
-  .query-bar {
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 10px;
-  }
-  #query-input {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 14px;
-    font-family: var(--sans);
-    font-size: 0.9rem;
-    color: var(--text);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  #query-input:focus { border-color: var(--blue); }
-  #query-input::placeholder { color: var(--muted); }
-
-  .btn {
-    padding: 10px 18px;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-family: var(--sans);
-    font-weight: 600;
-    font-size: 0.85rem;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  .btn:active { transform: scale(0.97); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-primary { background: var(--blue); color: #fff; }
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-  }
-  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
-
-  /* Pipeline status bar */
-  #pipeline-bar {
-    padding: 10px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.65rem;
-    font-family: var(--mono);
-    color: var(--muted);
-    min-height: 38px;
-    transition: all 0.2s;
-  }
-  .pipe-step {
-    display: flex; align-items: center; gap: 4px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    transition: all 0.2s;
-  }
-  .pipe-step.active {
-    color: var(--yellow);
-    border-color: rgba(245,197,24,0.3);
-    background: rgba(245,197,24,0.05);
-  }
-  .pipe-step.done {
-    color: var(--green);
-    border-color: rgba(0,229,160,0.2);
-    background: rgba(0,229,160,0.04);
-  }
-  .pipe-arrow { color: var(--border); font-size: 0.7rem; }
-
-  /* Results area */
-  #results-area {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px 24px;
-  }
-
-  /* LLM answer */
-  #llm-answer-box {
-    display: none;
-    background: var(--surface);
-    border: 1px solid rgba(43,92,255,0.35);
-    border-radius: 8px;
-    padding: 16px 20px;
-    margin-bottom: 20px;
-  }
-  #llm-answer-box .answer-label {
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    color: var(--blue);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 10px;
-  }
-  #llm-answer-text {
-    font-size: 0.9rem;
-    line-height: 1.65;
-    color: var(--text);
-    white-space: pre-wrap;
-  }
-
-  /* Chunks */
-  .chunks-label {
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 12px;
-  }
-  .chunk-card {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 10px;
-    overflow: hidden;
-    transition: border-color 0.15s;
-  }
-  .chunk-card:hover { border-color: #3a3a52; }
-  .chunk-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    background: var(--surface);
-    cursor: pointer;
-    user-select: none;
-  }
-  .chunk-meta {
-    display: flex; gap: 10px; align-items: center;
-    font-family: var(--mono); font-size: 0.65rem;
-  }
-  .chunk-rank {
-    background: rgba(43,92,255,0.15);
-    color: var(--blue);
-    border-radius: 4px;
-    padding: 2px 7px;
-    font-weight: 600;
-  }
-  .chunk-doc { color: var(--muted); }
-  .chunk-score-bar {
-    display: flex; align-items: center; gap: 6px;
-    font-family: var(--mono); font-size: 0.65rem;
-  }
-  .score-bar-track {
-    width: 60px; height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .score-bar-fill {
-    height: 100%;
-    background: var(--green);
-    border-radius: 2px;
-    transition: width 0.3s;
-  }
-  .score-val { color: var(--green); }
-  .chunk-toggle { color: var(--muted); font-size: 0.75rem; }
-  .chunk-body {
-    padding: 12px 14px;
-    font-size: 0.82rem;
-    line-height: 1.65;
-    color: #b0b0c8;
-    display: none;
-    border-top: 1px solid var(--border);
-    font-family: var(--mono);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .chunk-body.open { display: block; }
-
-  /* Empty state */
-  #empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--muted);
-    gap: 10px;
-  }
-  #empty-state .big { font-size: 2.5rem; }
-  #empty-state p { font-size: 0.85rem; text-align: center; max-width: 280px; line-height: 1.5; }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+}
 </style>
 </head>
 <body>
 
+<!-- ── Header ── -->
 <header>
   <div class="logo">RAG<span>Forge</span></div>
-  <span class="badge">C++ HNSW · BM25 · MMR</span>
-  <div id="status-badge">
+  <div class="status-pill">
     <div class="dot" id="status-dot"></div>
     <span id="status-text">connecting…</span>
   </div>
 </header>
 
+<!-- ── Tag strip ── -->
+<div class="tag-strip">
+  <div class="tag">C++ ENGINE</div>
+  <div class="tag">HNSW INDEX</div>
+  <div class="tag">BM25 HYBRID</div>
+  <div class="tag">MMR DIVERSITY</div>
+  <div class="tag">PYBIND11</div>
+  <div class="tag">FASTAPI</div>
+</div>
+
+<!-- ── Desktop grid wrapper ── -->
 <main>
-  <!-- Left panel -->
-  <div class="panel-left">
+<div class="desktop-grid">
 
-    <!-- Upload -->
-    <div class="panel-section">
-      <div class="panel-label">Upload Documents</div>
-      <div id="drop-zone">
-        <div class="icon">📄</div>
-        <p><strong>Drop files here</strong><br>or click to browse<br><span style="font-size:0.7rem">PDF · TXT · MD · DOCX</span></p>
-      </div>
-      <input type="file" id="file-input" multiple accept=".pdf,.txt,.md,.docx">
-      <div id="upload-status"></div>
-    </div>
+<!-- ── LEFT: Upload + Settings + Docs ── -->
+<div class="col-left">
 
-    <!-- Settings -->
-    <div class="panel-section">
-      <div class="panel-label">Retrieval Settings</div>
-      <div class="settings-row">
-        <label>Top-K candidates</label>
-        <input type="range" id="top-k" min="5" max="50" value="20">
-        <span class="val" id="top-k-val">20</span>
-      </div>
-      <div class="settings-row">
-        <label>Top-N results</label>
-        <input type="range" id="top-n" min="1" max="10" value="5">
-        <span class="val" id="top-n-val">5</span>
-      </div>
+  <!-- Upload -->
+  <div class="section">
+    <div class="section-label">Upload Docs</div>
+    <div id="drop-zone">
+      <span class="dz-icon">📄</span>
+      <span class="dz-main">Drop files here</span>
+      <span class="dz-sub">PDF · TXT · MD · DOCX</span>
     </div>
-
-    <!-- Indexed docs -->
-    <div class="panel-section" style="border-bottom:none">
-      <div class="panel-label">Indexed Documents</div>
-    </div>
-    <div class="docs-list" id="docs-list">
-      <div style="font-size:0.75rem;color:var(--muted);font-family:var(--mono);padding:4px 0">No documents indexed yet.</div>
-    </div>
-
+    <input type="file" id="file-input" multiple accept=".pdf,.txt,.md,.docx">
+    <div id="upload-status"></div>
   </div>
 
-  <!-- Right panel -->
-  <div class="panel-right">
-
-    <!-- Query bar -->
-    <div class="query-bar">
-      <input type="text" id="query-input" placeholder="Ask a question about your documents…">
-      <button class="btn btn-primary" id="query-btn" onclick="runQuery()">Search</button>
-      <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
+  <!-- Settings -->
+  <div class="section">
+    <div class="section-label">Retrieval Settings</div>
+    <div class="slider-row">
+      <label>Top-K candidates</label>
+      <input type="range" id="top-k" min="5" max="50" value="20">
+      <div class="slider-val" id="top-k-val">20</div>
     </div>
-
-    <!-- Pipeline steps -->
-    <div id="pipeline-bar">
-      <span style="color:var(--muted)">Pipeline:</span>
-      <div class="pipe-step" id="p-embed">⚙ Embed</div>
-      <span class="pipe-arrow">›</span>
-      <div class="pipe-step" id="p-ann">🔍 ANN</div>
-      <span class="pipe-arrow">›</span>
-      <div class="pipe-step" id="p-bm25">📝 BM25</div>
-      <span class="pipe-arrow">›</span>
-      <div class="pipe-step" id="p-hybrid">⚖ Hybrid</div>
-      <span class="pipe-arrow">›</span>
-      <div class="pipe-step" id="p-mmr">🎯 MMR</div>
-      <span class="pipe-arrow">›</span>
-      <div class="pipe-step" id="p-llm">✨ LLM</div>
+    <div class="slider-row">
+      <label>Top-N results</label>
+      <input type="range" id="top-n" min="1" max="10" value="5">
+      <div class="slider-val" id="top-n-val">5</div>
     </div>
-
-    <!-- Results -->
-    <div id="results-area">
-      <div id="empty-state">
-        <div class="big">🔬</div>
-        <p>Upload documents and ask a question to see retrieval results with relevance scores.</p>
-      </div>
-      <div id="llm-answer-box">
-        <div class="answer-label">✨ LLM Synthesis</div>
-        <div id="llm-answer-text"></div>
-      </div>
-      <div id="chunks-container" style="display:none">
-        <div class="chunks-label" id="chunks-label">Retrieved Chunks</div>
-        <div id="chunk-cards"></div>
-      </div>
-    </div>
-
   </div>
+
+  <!-- Indexed docs -->
+  <div class="section">
+    <div class="section-label">Indexed Docs</div>
+    <div id="docs-list">
+      <span style="font-family:var(--mono);font-size:0.7rem;color:#888">No documents yet.</span>
+    </div>
+  </div>
+
+</div><!-- col-left -->
+
+<!-- ── RIGHT: Query + Pipeline + Results ── -->
+<div class="col-right">
+
+  <!-- Query bar -->
+  <div class="query-section">
+    <div class="section-label">Ask a Question</div>
+    <div class="query-wrap">
+      <input type="text" id="query-input" placeholder="What does the document say about…">
+      <button id="search-btn" onclick="runQuery()">SEARCH</button>
+    </div>
+  </div>
+
+  <!-- Pipeline steps -->
+  <div class="pipeline-bar">
+    <span style="font-family:var(--mono);font-size:0.6rem;color:#666;flex-shrink:0">PIPELINE:</span>
+    <div class="pipe-step" id="p-embed">⚙ EMBED</div>
+    <span class="pipe-arrow">›</span>
+    <div class="pipe-step" id="p-ann">🔍 ANN</div>
+    <span class="pipe-arrow">›</span>
+    <div class="pipe-step" id="p-bm25">📝 BM25</div>
+    <span class="pipe-arrow">›</span>
+    <div class="pipe-step" id="p-hybrid">⚖ HYBRID</div>
+    <span class="pipe-arrow">›</span>
+    <div class="pipe-step" id="p-mmr">🎯 MMR</div>
+    <span class="pipe-arrow">›</span>
+    <div class="pipe-step" id="p-llm">✨ LLM</div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-area">
+    <div id="empty-state">
+      <div class="es-icon">🔬</div>
+      <p>Upload a document and ask a question to see retrieval results.</p>
+    </div>
+    <div id="llm-box">
+      <div class="llm-header">✨ LLM Synthesis</div>
+      <div id="llm-text"></div>
+    </div>
+    <div id="chunks-container" style="display:none">
+      <div class="chunks-header">
+        <div class="chunks-count" id="chunks-count">0 CHUNKS</div>
+      </div>
+      <div id="chunk-cards"></div>
+    </div>
+  </div>
+
+</div><!-- col-right -->
+</div><!-- desktop-grid -->
 </main>
+
+<!-- Floating clear -->
+<button id="clear-btn" onclick="clearAll()">✕ CLEAR</button>
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -485,28 +666,27 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://localhost:8000'
   : RENDER_URL;
 
-// ── Status ────────────────────────────────────────────────────────────────────
-let _coldStartRetries = 0;
+// ── Status polling ────────────────────────────────────────────────────────────
+let _retries = 0;
 
 async function fetchStatus() {
   try {
     const r = await fetch(`${API}/status`, { signal: AbortSignal.timeout(8000) });
     const d = await r.json();
-    _coldStartRetries = 0;
+    _retries = 0;
     document.getElementById('status-dot').className = 'dot green';
     document.getElementById('status-text').textContent =
       `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
     renderDocs(d.doc_ids, d.total_chunks);
   } catch {
-    _coldStartRetries++;
-    document.getElementById('status-dot').className = 'dot yellow';
-    if (_coldStartRetries <= 4) {
-      document.getElementById('status-text').textContent =
-        `backend waking up… (${_coldStartRetries * 8}s)`;
-      setTimeout(fetchStatus, 8000); // retry faster during cold start
+    _retries++;
+    if (_retries <= 5) {
+      document.getElementById('status-dot').className = 'dot yellow';
+      document.getElementById('status-text').textContent = `waking up… (${_retries * 8}s)`;
+      setTimeout(fetchStatus, 8000);
     } else {
-      document.getElementById('status-dot').className = 'dot';
-      document.getElementById('status-text').textContent = 'backend offline';
+      document.getElementById('status-dot').className = 'dot red';
+      document.getElementById('status-text').textContent = 'offline';
     }
   }
 }
@@ -514,14 +694,13 @@ async function fetchStatus() {
 function renderDocs(docIds, totalChunks) {
   const el = document.getElementById('docs-list');
   if (!docIds.length) {
-    el.innerHTML = '<div style="font-size:0.75rem;color:var(--muted);font-family:var(--mono);padding:4px 0">No documents indexed yet.</div>';
+    el.innerHTML = '<span style="font-family:var(--mono);font-size:0.7rem;color:#888">No documents yet.</span>';
     return;
   }
-  const avgChunks = Math.round(totalChunks / docIds.length);
   el.innerHTML = docIds.map(id => `
-    <div class="doc-item">
-      <span class="doc-name" title="${id}">${id}</span>
-      <span class="doc-chunks">~${avgChunks} chunks</span>
+    <div class="doc-chip">
+      <div class="chip-dot"></div>
+      <span>${id}</span>
     </div>
   `).join('');
 }
@@ -529,11 +708,11 @@ function renderDocs(docIds, totalChunks) {
 // ── Upload ────────────────────────────────────────────────────────────────────
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
-const uploadStatus = document.getElementById('upload-status');
+const statusEl  = document.getElementById('upload-status');
 
 dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
@@ -542,61 +721,54 @@ dropZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => uploadFiles(Array.from(fileInput.files)));
 
 async function uploadFiles(files) {
-  if (!files.length) return;
   for (const file of files) {
-    uploadStatus.className = 'loading';
-    uploadStatus.textContent = `↑ Uploading ${file.name}…`;
+    statusEl.className = 'loading';
+    statusEl.textContent = `↑ Uploading ${file.name}…`;
     const fd = new FormData();
     fd.append('file', file);
     try {
       const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || 'Upload failed');
-      uploadStatus.className = 'success';
-      uploadStatus.textContent = `✓ ${file.name} → ${d.chunks_indexed} chunks`;
+      statusEl.className = 'success';
+      statusEl.textContent = `✓ ${file.name} → ${d.chunks_indexed} chunks`;
       fetchStatus();
     } catch(e) {
-      uploadStatus.className = 'error';
-      uploadStatus.textContent = `✗ ${e.message}`;
+      statusEl.className = 'error';
+      statusEl.textContent = `✗ ${e.message}`;
     }
   }
   fileInput.value = '';
 }
 
-// ── Pipeline animation ─────────────────────────────────────────────────────────
-const pipeSteps = ['p-embed','p-ann','p-bm25','p-hybrid','p-mmr','p-llm'];
+// ── Pipeline animation ────────────────────────────────────────────────────────
+const PIPE_IDS = ['p-embed','p-ann','p-bm25','p-hybrid','p-mmr','p-llm'];
 
 function resetPipeline() {
-  pipeSteps.forEach(id => {
-    const el = document.getElementById(id);
-    el.className = 'pipe-step';
-  });
+  PIPE_IDS.forEach(id => document.getElementById(id).className = 'pipe-step');
 }
 
-async function animatePipeline(hasLLM) {
-  const steps = hasLLM ? pipeSteps : pipeSteps.slice(0, -1);
+async function animatePipeline(withLLM) {
+  const steps = withLLM ? PIPE_IDS : PIPE_IDS.slice(0,-1);
   for (const id of steps) {
-    const el = document.getElementById(id);
-    el.className = 'pipe-step active';
-    await sleep(180);
-    el.className = 'pipe-step done';
+    document.getElementById(id).className = 'pipe-step active';
+    await new Promise(r => setTimeout(r, 160));
+    document.getElementById(id).className = 'pipe-step done';
   }
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ── Query ────────────────────────────────────────────────────────────────────
+// ── Query ─────────────────────────────────────────────────────────────────────
 async function runQuery() {
   const q = document.getElementById('query-input').value.trim();
   if (!q) return;
 
-  const btn = document.getElementById('query-btn');
+  const btn = document.getElementById('search-btn');
   btn.disabled = true;
   btn.textContent = '…';
   resetPipeline();
 
   document.getElementById('empty-state').style.display = 'none';
-  document.getElementById('llm-answer-box').style.display = 'none';
+  document.getElementById('llm-box').style.display = 'none';
   document.getElementById('chunks-container').style.display = 'none';
 
   const topK = parseInt(document.getElementById('top-k').value);
@@ -605,7 +777,7 @@ async function runQuery() {
   try {
     const r = await fetch(`${API}/query`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: q, top_k: topK, top_n: topN })
     });
     const d = await r.json();
@@ -613,85 +785,83 @@ async function runQuery() {
 
     await animatePipeline(d.llm_available && !!d.llm_answer);
     renderResults(d);
+    document.getElementById('clear-btn').style.display = 'block';
   } catch(e) {
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('empty-state').innerHTML = `
-      <div class="big">⚠️</div>
-      <p style="color:var(--red)">${e.message}</p>
+      <div class="es-icon">⚠️</div>
+      <p style="color:var(--red);font-weight:700">${e.message}</p>
     `;
   }
 
   btn.disabled = false;
-  btn.textContent = 'Search';
+  btn.textContent = 'SEARCH';
 }
 
 function renderResults(d) {
-  // LLM answer
   if (d.llm_answer) {
-    const box = document.getElementById('llm-answer-box');
+    const box = document.getElementById('llm-box');
     box.style.display = 'block';
-    document.getElementById('llm-answer-text').textContent = d.llm_answer;
+    document.getElementById('llm-text').textContent = d.llm_answer;
   }
 
-  // Chunks
-  if (d.chunks && d.chunks.length > 0) {
+  if (d.chunks && d.chunks.length) {
     document.getElementById('chunks-container').style.display = 'block';
-    document.getElementById('chunks-label').textContent =
-      `${d.chunks.length} Retrieved Chunks${d.llm_answer ? ' (sources)' : ''}`;
+    document.getElementById('chunks-count').textContent =
+      `${d.chunks.length} CHUNK${d.chunks.length > 1 ? 'S' : ''} RETRIEVED`;
 
-    const container = document.getElementById('chunk-cards');
-    container.innerHTML = d.chunks.map((c, i) => `
+    document.getElementById('chunk-cards').innerHTML = d.chunks.map((c, i) => `
       <div class="chunk-card">
-        <div class="chunk-header" onclick="toggleChunk(${i})">
-          <div class="chunk-meta">
-            <span class="chunk-rank">#${i + 1}</span>
-            <span class="chunk-doc">${c.doc_id}</span>
-            <span style="color:var(--muted)">chunk ${c.chunk_index}</span>
-          </div>
-          <div class="chunk-score-bar">
-            <div class="score-bar-track">
-              <div class="score-bar-fill" style="width:${Math.round(c.relevance_score * 100)}%"></div>
+        <div class="chunk-head" onclick="toggleChunk(${i})">
+          <div class="chunk-rank-badge ${i === 0 ? 'top' : ''}">#${i+1}</div>
+          <div class="chunk-meta-wrap">
+            <div class="chunk-doc-id">${c.doc_id} · chunk ${c.chunk_index}</div>
+            <div class="chunk-score-row">
+              <div class="score-track">
+                <div class="score-fill" style="width:${Math.round(c.relevance_score*100)}%"></div>
+              </div>
+              <div class="score-num">${(c.relevance_score*100).toFixed(1)}%</div>
             </div>
-            <span class="score-val">${(c.relevance_score * 100).toFixed(1)}%</span>
-            <span class="chunk-toggle" id="toggle-${i}">▼</span>
           </div>
+          <div class="chunk-toggle" id="toggle-${i}">▼</div>
         </div>
-        <div class="chunk-body${i === 0 ? ' open' : ''}" id="body-${i}">${escapeHtml(c.chunk_text)}</div>
+        <div class="chunk-body ${i === 0 ? 'open' : ''}" id="body-${i}">${esc(c.chunk_text)}</div>
       </div>
     `).join('');
   } else {
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('empty-state').innerHTML = `
-      <div class="big">🔍</div>
-      <p>No matching chunks found. Try a different query or upload more documents.</p>
+      <div class="es-icon">🔍</div>
+      <p>No matching chunks found. Try a different query.</p>
     `;
   }
 }
 
 function toggleChunk(i) {
-  const body = document.getElementById(`body-${i}`);
+  const body   = document.getElementById(`body-${i}`);
   const toggle = document.getElementById(`toggle-${i}`);
-  const open = body.classList.toggle('open');
+  const open   = body.classList.toggle('open');
   toggle.textContent = open ? '▲' : '▼';
 }
 
-function clearResults() {
+function clearAll() {
   document.getElementById('empty-state').style.display = 'flex';
   document.getElementById('empty-state').innerHTML = `
-    <div class="big">🔬</div>
-    <p>Upload documents and ask a question to see retrieval results with relevance scores.</p>
+    <div class="es-icon">🔬</div>
+    <p>Upload a document and ask a question to see retrieval results.</p>
   `;
-  document.getElementById('llm-answer-box').style.display = 'none';
+  document.getElementById('llm-box').style.display = 'none';
   document.getElementById('chunks-container').style.display = 'none';
   document.getElementById('query-input').value = '';
+  document.getElementById('clear-btn').style.display = 'none';
   resetPipeline();
 }
 
-function escapeHtml(s) {
+function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Slider labels ─────────────────────────────────────────────────────────────
+// ── Sliders ───────────────────────────────────────────────────────────────────
 document.getElementById('top-k').addEventListener('input', function() {
   document.getElementById('top-k-val').textContent = this.value;
 });
@@ -706,7 +876,7 @@ document.getElementById('query-input').addEventListener('keydown', e => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 fetchStatus();
-setInterval(fetchStatus, 15000);
+setInterval(fetchStatus, 20000);
 </script>
 </body>
 </html>
