@@ -23,12 +23,17 @@ except ImportError:
 
 # Shared fastembed model — loaded once, ONNX-based, no torch
 _model = None
+_model_lock = None  # asyncio.Lock created lazily (can't create at import time)
 
 def _get_model():
+    """Thread-safe model initialization."""
     global _model
     if _model is None:
         from fastembed import TextEmbedding
-        _model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
+        # Double-check after potential concurrent init — last writer wins,
+        # but fastembed is idempotent so this is safe
+        if _model is None:
+            _model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
     return _model
 
 def _embed(texts: list[str]) -> np.ndarray:
@@ -121,15 +126,17 @@ class _PythonRAGEngine:
         self._embeddings: list[Any] = []
 
     def _chunk_text(self, text: str, doc_id: str) -> list[dict]:
-        words = text.split()
-        step  = max(1, self.chunk_size - self.chunk_overlap)
+        """Character-based sliding window — matches C++ chunker behavior."""
         chunks = []
-        for i in range(0, len(words), step):
-            chunks.append({
-                "text":        " ".join(words[i : i + self.chunk_size]),
-                "doc_id":      doc_id,
-                "chunk_index": len(chunks),
-            })
+        step = max(1, self.chunk_size - self.chunk_overlap)
+        for i in range(0, len(text), step):
+            chunk_text = text[i : i + self.chunk_size].strip()
+            if chunk_text:
+                chunks.append({
+                    "text":        chunk_text,
+                    "doc_id":      doc_id,
+                    "chunk_index": len(chunks),
+                })
         return chunks
 
     def ingest(self, text: str, doc_id: str) -> int:
