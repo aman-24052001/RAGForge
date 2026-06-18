@@ -1,165 +1,207 @@
 # RAGForge
 
-**Production-grade RAG system** — C++ engine with Python FastAPI backend and a static frontend on GitHub Pages.
+> Production-grade RAG system with a C++ core, Python backend, and a neo-brutalist mobile-first UI.
 
-| Component | Technology |
-|-----------|-----------|
-| Chunker | Sentence-aware sliding window (C++) |
-| Embedder | `all-MiniLM-L6-v2` via ONNX Runtime (C++) |
-| Index | HNSW (`hnswlib`) (C++) |
-| Retrieval | Hybrid ANN + BM25 (C++) |
-| Diversity | MMR — Maximal Marginal Relevance (C++) |
-| Python binding | `pybind11` |
-| Backend | FastAPI + uvicorn |
-| LLM synthesis | Optional — Anthropic Claude / OpenAI (auto-detected) |
-| Frontend | Static HTML/JS → GitHub Pages |
-| Backend hosting | Render free tier |
+**Live demo:** [aman-24052001.github.io/RAGForge](https://aman-24052001.github.io/RAGForge/)  
+**Backend:** [ragforge-wd3z.onrender.com](https://ragforge-wd3z.onrender.com/docs)
 
 ---
 
-## RAG Pipeline
+## What it does
+
+Upload documents (PDF, TXT, MD, DOCX), ask questions, get back the most relevant and diverse chunks — ranked, scored, and optionally synthesized by an LLM.
+
+Every retrieval runs a full pipeline:
 
 ```
-Query → Embed → ANN Search (HNSW) ──┐
-                                     ├→ Hybrid Score (60% cosine + 40% BM25) → MMR → Top-N chunks
-              BM25 Inverted Index ───┘                                           ↓
-                                                                        [LLM if key set]
-                                                                        else show chunks
+Query
+  └─ Embed (fastembed / all-MiniLM-L6-v2)
+       └─ ANN Search (HNSW — C++)
+            └─ BM25 Hybrid Scoring (C++)
+                 └─ MMR Diversity Reranking (C++)
+                      └─ Top-N Chunks → [LLM synthesis if key set]
 ```
 
 ---
 
-## Quick Start
+## Architecture
 
-### 1. Download model
-```bash
-python scripts/download_model.py
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Chunker | Sentence-aware sliding window | C++, no external deps |
+| Embedding | `all-MiniLM-L6-v2` via `fastembed` | Python, ONNX Runtime, ~50MB |
+| Vector Index | HNSW (`hnswlib` vendored) | C++, sub-ms search |
+| Lexical Index | BM25 inverted index | C++, pure implementation |
+| Hybrid Score | 60% cosine + 40% BM25 | C++ |
+| Diversity | MMR (Maximal Marginal Relevance) | C++, λ=0.6 |
+| Python Binding | `pybind11` | `.so` compiled in CI |
+| Backend | FastAPI + uvicorn | Per-session isolated indexes |
+| Auth | HMAC-SHA256 tokens | `APP_PASSWORD` env var |
+| LLM (optional) | Anthropic Claude Haiku / GPT-4o-mini | Auto-detected from env |
+| Frontend | Single-file HTML/JS | Neo-brutalist, mobile-first |
+| Frontend hosting | GitHub Pages | Auto-deployed via Actions |
+| Backend hosting | Render free tier | Docker, 512MB RAM |
+
+---
+
+## RAG Pipeline — deep dive
+
+### Chunking
+Sentence-aware sliding window with configurable size (default 512 chars) and overlap (64 chars). Splits on `.`, `!`, `?`, `\n\n` boundaries.
+
+### Hybrid Retrieval
+Two signals fused per candidate chunk:
+- **Cosine similarity** via HNSW approximate nearest neighbour (over-fetches 2× top_k)
+- **BM25** from a term-frequency inverted index built at ingest time
+
+Combined as: `final_score = 0.6 × cosine + 0.4 × BM25_normalized`
+
+### MMR Diversity
+Maximal Marginal Relevance iteratively selects chunks that are relevant to the query but dissimilar to already-selected chunks:
+
+```
+MMR(d) = λ × relevance(d, query) − (1−λ) × max_similarity(d, selected)
 ```
 
-### 2. Build C++ engine
+λ=0.6 balances relevance vs diversity. Tunable via `MMR_LAMBDA` env var.
+
+---
+
+## Security
+
+- **Password-protected** — set `APP_PASSWORD` on Render, never in code
+- **Per-session isolation** — each login gets a unique `session_id`; 4 users = 4 independent indexes, zero data leakage
+- **Token format** — `session_id.HMAC-SHA256(session_id:day)`, expires daily
+- **Logout** — `POST /auth/logout` immediately wipes the session's index from server memory; frontend clears token from `sessionStorage`
+
+---
+
+## Running locally
+
+### Prerequisites
+- Python 3.11+
+- `cmake`, `build-essential` (for C++ build)
+- `pybind11` (`pip install pybind11`)
+
+### 1. Build C++ engine (optional — Python fallback works without it)
 ```bash
-./scripts/build.sh
+cd rag_engine && mkdir build && cd build
+cmake .. -Dpybind11_DIR=$(python3 -c "import pybind11; print(pybind11.get_cmake_dir())")
+make -j$(nproc)
+# Outputs: backend/ragforge_core*.so
 ```
-> On macOS: change `ORT_PLATFORM="osx-arm64"` in `build.sh` for Apple Silicon.
+
+### 2. Install Python deps
+```bash
+pip install -r backend/requirements.txt
+```
 
 ### 3. Run backend
 ```bash
-./scripts/run.sh
+cd backend
+uvicorn main:app --reload
 # API at http://localhost:8000
-# Docs at http://localhost:8000/docs
+# Swagger docs at http://localhost:8000/docs
 ```
 
 ### 4. Open frontend
-Open `frontend/index.html` in a browser, or visit the GitHub Pages URL.
-
----
-
-## Pure-Python fallback (no C++ build)
-
-The backend automatically falls back to `sentence-transformers` + `numpy` if `ragforge_core.so` is not present. This works out-of-the-box for development and CI:
-
-```bash
-pip install -r backend/requirements.txt
-cd backend && uvicorn main:app --reload
-```
-
----
-
-## Optional: LLM synthesis
-
-Set one of:
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # uses claude-haiku-4-5 (fastest)
-export OPENAI_API_KEY=sk-...          # uses gpt-4o-mini
-```
-If neither is set, the API returns retrieved chunks only (default behavior).
-
----
-
-## API Reference
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/status` | GET | Index stats + LLM availability |
-| `/upload` | POST (multipart) | Ingest PDF/TXT/MD/DOCX |
-| `/query` | POST (JSON) | Retrieve + optional LLM answer |
-| `/query/stream` | POST (JSON) | SSE streaming version |
-| `/index` | DELETE | Clear index |
-
-```json
-// POST /query
-{ "query": "what is HNSW?", "top_k": 20, "top_n": 5 }
-
-// Response
-{
-  "query": "what is HNSW?",
-  "chunks": [
-    { "doc_id": "intro_rag", "chunk_index": 2, "chunk_text": "...", "relevance_score": 0.87, "diversity_rank": 0 }
-  ],
-  "llm_answer": "HNSW (Hierarchical Navigable Small World)...",  // null if no key
-  "llm_available": true
-}
-```
+Open `frontend/index.html` in a browser, or point it at localhost:8000.
 
 ---
 
 ## Deployment
 
-### Frontend → GitHub Pages
-Push to `main` — GitHub Actions auto-deploys `frontend/` to Pages.
+### Frontend → GitHub Pages (automatic)
+Push to `main` → GitHub Actions builds C++, runs Python tests, deploys `frontend/` to Pages.
 
-### Backend → Render
-1. Connect repo to [render.com](https://render.com)
-2. It picks up `render.yaml` automatically
-3. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in Render's env dashboard (optional)
-4. Update `API` constant in `frontend/index.html` to your Render URL
+### Backend → Render (Docker)
+1. Connect repo to [render.com](https://render.com) → New Web Service
+2. Render detects `Dockerfile` automatically
+3. Set env vars in Render dashboard:
 
-### Docker
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `APP_PASSWORD` | Yes | Shared access password (set in dashboard, never in code) |
+| `ANTHROPIC_API_KEY` | Optional | Enables Claude Haiku LLM synthesis |
+| `OPENAI_API_KEY` | Optional | Enables GPT-4o-mini synthesis (fallback) |
+| `CHUNK_SIZE` | Optional | Default: 512 |
+| `MMR_LAMBDA` | Optional | Default: 0.6 |
+
+---
+
+## API Reference
+
+All endpoints (except `/auth/login`) require `Authorization: Bearer <token>`.
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/auth/login` | POST | — | Get session token |
+| `/auth/logout` | POST | ✓ | Wipe session + index |
+| `/status` | GET | ✓ | Chunk count, doc list, LLM availability |
+| `/upload` | POST | ✓ | Ingest PDF/TXT/MD/DOCX |
+| `/query` | POST | ✓ | Retrieve chunks + optional LLM answer |
+| `/index` | DELETE | ✓ | Clear session index |
+
 ```bash
-docker build -t ragforge .
-docker run -p 8000:8000 ragforge
+# Login
+curl -X POST https://ragforge-wd3z.onrender.com/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-password"}'
+# → { "token": "abc123.hmac...", "session_id": "abc123" }
+
+# Upload
+curl -X POST https://ragforge-wd3z.onrender.com/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@document.pdf"
+
+# Query
+curl -X POST https://ragforge-wd3z.onrender.com/query \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "what is HNSW?", "top_k": 20, "top_n": 5}'
 ```
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 ragforge/
 ├── rag_engine/
-│   ├── src/            # C++: chunker, embedder, index, mmr, rag_engine
-│   ├── include/        # Headers
-│   ├── bindings/       # pybind11 module
-│   ├── tests/          # C++ unit tests
+│   ├── src/
+│   │   ├── chunker.cpp          # Sentence-aware sliding window
+│   │   ├── index.cpp            # HNSW + BM25 hybrid index
+│   │   ├── mmr.cpp              # Maximal Marginal Relevance
+│   │   └── rag_engine_core.cpp  # Unified entry point
+│   ├── include/                 # C++ headers
+│   ├── bindings/
+│   │   └── rag_bindings.cpp     # pybind11 module
+│   ├── third_party/
+│   │   ├── hnswlib/             # Vendored — no FetchContent
+│   │   └── nlohmann/            # Vendored json.hpp
+│   ├── tests/                   # C++ unit tests
 │   └── CMakeLists.txt
 ├── backend/
-│   ├── main.py         # FastAPI app
-│   ├── rag_wrapper.py  # C++/Python unified interface
-│   ├── doc_parser.py   # PDF/DOCX/TXT parser
-│   ├── llm_client.py   # Optional LLM synthesis
-│   └── tests/          # Python integration tests
+│   ├── main.py                  # FastAPI, per-session routing
+│   ├── auth.py                  # HMAC token auth + session management
+│   ├── rag_wrapper.py           # C++/Python unified interface
+│   ├── doc_parser.py            # PDF/DOCX/TXT/MD → plain text
+│   ├── llm_client.py            # Optional Anthropic/OpenAI synthesis
+│   ├── requirements.txt
+│   └── tests/
 ├── frontend/
-│   └── index.html      # Single-file UI
-├── models/minilm/      # ONNX model (downloaded via script)
-├── scripts/
-│   ├── build.sh
-│   ├── run.sh
-│   └── download_model.py
-├── .github/workflows/build.yml
+│   └── index.html               # Single-file neo-brutalist UI
+├── .github/workflows/
+│   └── build.yml                # CI: C++ build → Python tests → Pages deploy
+├── Dockerfile                   # For Render
 ├── render.yaml
-└── Dockerfile
+└── README.md
 ```
 
 ---
 
-## Configuration
+## Notes on free tier limits
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `EMBEDDING_MODEL_PATH` | `./models/minilm/model.onnx` | ONNX model path |
-| `INDEX_PATH` | `./index/ragforge` | Index save/load path |
-| `CHUNK_SIZE` | `512` | Chars per chunk |
-| `CHUNK_OVERLAP` | `64` | Overlap between chunks |
-| `MMR_LAMBDA` | `0.6` | MMR trade-off (0=diversity, 1=relevance) |
-| `ANTHROPIC_API_KEY` | — | Enables Claude synthesis |
-| `OPENAI_API_KEY` | — | Enables GPT synthesis (fallback) |
+Render free tier spins down after **15 min of inactivity** — first request after idle takes ~30–50s to wake up. The frontend handles this with a retry loop showing "waking up…".
+
+All session data (indexes, chunks) lives in memory. A restart wipes everything — users need to re-upload. This is a free tier constraint; persistent storage requires a paid plan or external DB.
