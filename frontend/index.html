@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge — Document Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #13131a;
+    --border:    #2a2a38;
+    --blue:      #2B5CFF;
+    --yellow:    #f5c518;
+    --green:     #00e5a0;
+    --red:       #ff4545;
+    --text:      #e8e8f0;
+    --muted:     #6b6b80;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Space Grotesk', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+  .logo {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .logo span { color: var(--blue); }
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+  }
+  #status-badge {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.green { background: var(--green); }
+  .dot.yellow { background: var(--yellow); }
+
+  /* ── Layout ── */
+  main {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    flex: 1;
+    min-height: 0;
+    height: calc(100vh - 57px);
+  }
+
+  /* ── Left panel ── */
+  .panel-left {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-section {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-label {
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+
+  /* Drop zone */
+  #drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  #drop-zone:hover, #drop-zone.drag-over {
+    border-color: var(--blue);
+    background: rgba(43,92,255,0.05);
+  }
+  #drop-zone .icon { font-size: 1.8rem; margin-bottom: 8px; }
+  #drop-zone p { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+  #drop-zone strong { color: var(--text); }
+  #file-input { display: none; }
+
+  /* Upload progress */
+  #upload-status {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    min-height: 18px;
+    transition: color 0.2s;
+  }
+  #upload-status.success { color: var(--green); }
+  #upload-status.error   { color: var(--red); }
+  #upload-status.loading { color: var(--yellow); }
+
+  /* Docs list */
+  .docs-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 20px;
+  }
+  .doc-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    font-size: 0.78rem;
+    font-family: var(--mono);
+  }
+  .doc-item .doc-name {
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .doc-item .doc-chunks {
+    color: var(--muted);
+    font-size: 0.65rem;
+    white-space: nowrap;
+  }
+
+  /* Settings */
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+  }
+  .settings-row label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+  .settings-row input[type=range] {
+    width: 100px;
+    accent-color: var(--blue);
+  }
+  .settings-row .val {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--yellow);
+    width: 28px;
+    text-align: right;
+  }
+
+  /* ── Right panel ── */
+  .panel-right {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Query bar */
+  .query-bar {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+  }
+  #query-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #query-input:focus { border-color: var(--blue); }
+  #query-input::placeholder { color: var(--muted); }
+
+  .btn {
+    padding: 10px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+  /* Pipeline status bar */
+  #pipeline-bar {
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    min-height: 38px;
+    transition: all 0.2s;
+  }
+  .pipe-step {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .pipe-step.active {
+    color: var(--yellow);
+    border-color: rgba(245,197,24,0.3);
+    background: rgba(245,197,24,0.05);
+  }
+  .pipe-step.done {
+    color: var(--green);
+    border-color: rgba(0,229,160,0.2);
+    background: rgba(0,229,160,0.04);
+  }
+  .pipe-arrow { color: var(--border); font-size: 0.7rem; }
+
+  /* Results area */
+  #results-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+
+  /* LLM answer */
+  #llm-answer-box {
+    display: none;
+    background: var(--surface);
+    border: 1px solid rgba(43,92,255,0.35);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  #llm-answer-box .answer-label {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+  #llm-answer-text {
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+
+  /* Chunks */
+  .chunks-label {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+  .chunk-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .chunk-card:hover { border-color: #3a3a52; }
+  .chunk-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface);
+    cursor: pointer;
+    user-select: none;
+  }
+  .chunk-meta {
+    display: flex; gap: 10px; align-items: center;
+    font-family: var(--mono); font-size: 0.65rem;
+  }
+  .chunk-rank {
+    background: rgba(43,92,255,0.15);
+    color: var(--blue);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-weight: 600;
+  }
+  .chunk-doc { color: var(--muted); }
+  .chunk-score-bar {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 0.65rem;
+  }
+  .score-bar-track {
+    width: 60px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .score-val { color: var(--green); }
+  .chunk-toggle { color: var(--muted); font-size: 0.75rem; }
+  .chunk-body {
+    padding: 12px 14px;
+    font-size: 0.82rem;
+    line-height: 1.65;
+    color: #b0b0c8;
+    display: none;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .chunk-body.open { display: block; }
+
+  /* Empty state */
+  #empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    gap: 10px;
+  }
+  #empty-state .big { font-size: 2.5rem; }
+  #empty-state p { font-size: 0.85rem; text-align: center; max-width: 280px; line-height: 1.5; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RAG<span>Forge</span></div>
+  <span class="badge">C++ HNSW · BM25 · MMR</span>
+  <div id="status-badge">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">connecting…</span>
+  </div>
+</header>
+
+<main>
+  <!-- Left panel -->
+  <div class="panel-left">
+
+    <!-- Upload -->
+    <div class="panel-section">
+      <div class="panel-label">Upload Documents</div>
+      <div id="drop-zone">
+        <div class="icon">📄</div>
+        <p><strong>Drop files here</strong><br>or click to browse<br><span style="font-size:0.7rem">PDF · TXT · MD · DOCX</span></p>
+      </div>
+      <input type="file" id="file-input" multiple accept=".pdf,.txt,.md,.docx">
+      <div id="upload-status"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel-section">
+      <div class="panel-label">Retrieval Settings</div>
+      <div class="settings-row">
+        <label>Top-K candidates</label>
+        <input type="range" id="top-k" min="5" max="50" value="20">
+        <span class="val" id="top-k-val">20</span>
+      </div>
+      <div class="settings-row">
+        <label>Top-N results</label>
+        <input type="range" id="top-n" min="1" max="10" value="5">
+        <span class="val" id="top-n-val">5</span>
+      </div>
+    </div>
+
+    <!-- Indexed docs -->
+    <div class="panel-section" style="border-bottom:none">
+      <div class="panel-label">Indexed Documents</div>
+    </div>
+    <div class="docs-list" id="docs-list">
+      <div style="font-size:0.75rem;color:var(--muted);font-family:var(--mono);padding:4px 0">No documents indexed yet.</div>
+    </div>
+
+  </div>
+
+  <!-- Right panel -->
+  <div class="panel-right">
+
+    <!-- Query bar -->
+    <div class="query-bar">
+      <input type="text" id="query-input" placeholder="Ask a question about your documents…">
+      <button class="btn btn-primary" id="query-btn" onclick="runQuery()">Search</button>
+      <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
+    </div>
+
+    <!-- Pipeline steps -->
+    <div id="pipeline-bar">
+      <span style="color:var(--muted)">Pipeline:</span>
+      <div class="pipe-step" id="p-embed">⚙ Embed</div>
+      <span class="pipe-arrow">›</span>
+      <div class="pipe-step" id="p-ann">🔍 ANN</div>
+      <span class="pipe-arrow">›</span>
+      <div class="pipe-step" id="p-bm25">📝 BM25</div>
+      <span class="pipe-arrow">›</span>
+      <div class="pipe-step" id="p-hybrid">⚖ Hybrid</div>
+      <span class="pipe-arrow">›</span>
+      <div class="pipe-step" id="p-mmr">🎯 MMR</div>
+      <span class="pipe-arrow">›</span>
+      <div class="pipe-step" id="p-llm">✨ LLM</div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-area">
+      <div id="empty-state">
+        <div class="big">🔬</div>
+        <p>Upload documents and ask a question to see retrieval results with relevance scores.</p>
+      </div>
+      <div id="llm-answer-box">
+        <div class="answer-label">✨ LLM Synthesis</div>
+        <div id="llm-answer-text"></div>
+      </div>
+      <div id="chunks-container" style="display:none">
+        <div class="chunks-label" id="chunks-label">Retrieved Chunks</div>
+        <div id="chunk-cards"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8000'
+  : (localStorage.getItem('ragforge_api') || 'http://localhost:8000');
+
+// ── Status ────────────────────────────────────────────────────────────────────
+async function fetchStatus() {
+  try {
+    const r = await fetch(`${API}/status`);
+    const d = await r.json();
+    document.getElementById('status-dot').className = 'dot green';
+    document.getElementById('status-text').textContent =
+      `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
+    renderDocs(d.doc_ids, d.total_chunks);
+  } catch {
+    document.getElementById('status-dot').className = 'dot';
+    document.getElementById('status-text').textContent = 'backend offline';
+  }
+}
+
+function renderDocs(docIds, totalChunks) {
+  const el = document.getElementById('docs-list');
+  if (!docIds.length) {
+    el.innerHTML = '<div style="font-size:0.75rem;color:var(--muted);font-family:var(--mono);padding:4px 0">No documents indexed yet.</div>';
+    return;
+  }
+  const avgChunks = Math.round(totalChunks / docIds.length);
+  el.innerHTML = docIds.map(id => `
+    <div class="doc-item">
+      <span class="doc-name" title="${id}">${id}</span>
+      <span class="doc-chunks">~${avgChunks} chunks</span>
+    </div>
+  `).join('');
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const uploadStatus = document.getElementById('upload-status');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  uploadFiles(Array.from(e.dataTransfer.files));
+});
+fileInput.addEventListener('change', () => uploadFiles(Array.from(fileInput.files)));
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  for (const file of files) {
+    uploadStatus.className = 'loading';
+    uploadStatus.textContent = `↑ Uploading ${file.name}…`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Upload failed');
+      uploadStatus.className = 'success';
+      uploadStatus.textContent = `✓ ${file.name} → ${d.chunks_indexed} chunks`;
+      fetchStatus();
+    } catch(e) {
+      uploadStatus.className = 'error';
+      uploadStatus.textContent = `✗ ${e.message}`;
+    }
+  }
+  fileInput.value = '';
+}
+
+// ── Pipeline animation ─────────────────────────────────────────────────────────
+const pipeSteps = ['p-embed','p-ann','p-bm25','p-hybrid','p-mmr','p-llm'];
+
+function resetPipeline() {
+  pipeSteps.forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'pipe-step';
+  });
+}
+
+async function animatePipeline(hasLLM) {
+  const steps = hasLLM ? pipeSteps : pipeSteps.slice(0, -1);
+  for (const id of steps) {
+    const el = document.getElementById(id);
+    el.className = 'pipe-step active';
+    await sleep(180);
+    el.className = 'pipe-step done';
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Query ────────────────────────────────────────────────────────────────────
+async function runQuery() {
+  const q = document.getElementById('query-input').value.trim();
+  if (!q) return;
+
+  const btn = document.getElementById('query-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  resetPipeline();
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('llm-answer-box').style.display = 'none';
+  document.getElementById('chunks-container').style.display = 'none';
+
+  const topK = parseInt(document.getElementById('top-k').value);
+  const topN = parseInt(document.getElementById('top-n').value);
+
+  try {
+    const r = await fetch(`${API}/query`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query: q, top_k: topK, top_n: topN })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Query failed');
+
+    await animatePipeline(d.llm_available && !!d.llm_answer);
+    renderResults(d);
+  } catch(e) {
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('empty-state').innerHTML = `
+      <div class="big">⚠️</div>
+      <p style="color:var(--red)">${e.message}</p>
+    `;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Search';
+}
+
+function renderResults(d) {
+  // LLM answer
+  if (d.llm_answer) {
+    const box = document.getElementById('llm-answer-box');
+    box.style.display = 'block';
+    document.getElementById('llm-answer-text').textContent = d.llm_answer;
+  }
+
+  // Chunks
+  if (d.chunks && d.chunks.length > 0) {
+    document.getElementById('chunks-container').style.display = 'block';
+    document.getElementById('chunks-label').textContent =
+      `${d.chunks.length} Retrieved Chunks${d.llm_answer ? ' (sources)' : ''}`;
+
+    const container = document.getElementById('chunk-cards');
+    container.innerHTML = d.chunks.map((c, i) => `
+      <div class="chunk-card">
+        <div class="chunk-header" onclick="toggleChunk(${i})">
+          <div class="chunk-meta">
+            <span class="chunk-rank">#${i + 1}</span>
+            <span class="chunk-doc">${c.doc_id}</span>
+            <span style="color:var(--muted)">chunk ${c.chunk_index}</span>
+          </div>
+          <div class="chunk-score-bar">
+            <div class="score-bar-track">
+              <div class="score-bar-fill" style="width:${Math.round(c.relevance_score * 100)}%"></div>
+            </div>
+            <span class="score-val">${(c.relevance_score * 100).toFixed(1)}%</span>
+            <span class="chunk-toggle" id="toggle-${i}">▼</span>
+          </div>
+        </div>
+        <div class="chunk-body${i === 0 ? ' open' : ''}" id="body-${i}">${escapeHtml(c.chunk_text)}</div>
+      </div>
+    `).join('');
+  } else {
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('empty-state').innerHTML = `
+      <div class="big">🔍</div>
+      <p>No matching chunks found. Try a different query or upload more documents.</p>
+    `;
+  }
+}
+
+function toggleChunk(i) {
+  const body = document.getElementById(`body-${i}`);
+  const toggle = document.getElementById(`toggle-${i}`);
+  const open = body.classList.toggle('open');
+  toggle.textContent = open ? '▲' : '▼';
+}
+
+function clearResults() {
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('empty-state').innerHTML = `
+    <div class="big">🔬</div>
+    <p>Upload documents and ask a question to see retrieval results with relevance scores.</p>
+  `;
+  document.getElementById('llm-answer-box').style.display = 'none';
+  document.getElementById('chunks-container').style.display = 'none';
+  document.getElementById('query-input').value = '';
+  resetPipeline();
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Slider labels ─────────────────────────────────────────────────────────────
+document.getElementById('top-k').addEventListener('input', function() {
+  document.getElementById('top-k-val').textContent = this.value;
+});
+document.getElementById('top-n').addEventListener('input', function() {
+  document.getElementById('top-n-val').textContent = this.value;
+});
+
+// ── Enter key ─────────────────────────────────────────────────────────────────
+document.getElementById('query-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runQuery();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+fetchStatus();
+setInterval(fetchStatus, 15000);
+</script>
+</body>
+</html>

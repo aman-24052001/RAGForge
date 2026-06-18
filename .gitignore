@@ -1,0 +1,33 @@
+# Build artifacts
+rag_engine/build/
+*.so
+*.o
+*.a
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Model files (large — download via script)
+models/minilm/*.onnx
+models/minilm/*.bin
+models/minilm/tokenizer.json
+# Keep: vocab.txt, tokenizer_config.json (small, needed for C++ tokenizer)
+!models/minilm/vocab.txt
+!models/minilm/tokenizer_config.json
+
+# Index
+index/
+
+# Env
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,104 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── C++ Build + Test ──────────────────────────────────────────────────────────
+  build-cpp:
+    name: Build C++ Engine
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake build-essential python3-dev
+
+      - name: Install ONNX Runtime
+        run: |
+          ORT_VERSION="1.18.0"
+          curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" -o /tmp/ort.tgz
+          sudo tar xzf /tmp/ort.tgz -C /usr/local
+          sudo mv /usr/local/onnxruntime-linux-x64-${ORT_VERSION} /usr/local/onnxruntime
+
+      - name: Install pybind11
+        run: pip install pybind11
+
+      - name: Configure cmake
+        working-directory: rag_engine
+        run: |
+          mkdir -p build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dpybind11_DIR=$(python3 -c "import pybind11; print(pybind11.get_cmake_dir())") \
+            -DONNXRUNTIME_ROOT=/usr/local/onnxruntime
+
+      - name: Build engine + tests
+        working-directory: rag_engine/build
+        run: make -j$(nproc) test_chunker test_mmr
+
+      - name: Run C++ tests
+        working-directory: rag_engine/build
+        run: |
+          ./test_chunker
+          ./test_mmr
+
+  # ── Python tests ─────────────────────────────────────────────────────────────
+  test-python:
+    name: Python Backend Tests
+    runs-on: ubuntu-22.04
+    needs: []  # runs in parallel with build-cpp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps (fallback mode — no .so)
+        working-directory: backend
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run Python tests
+        working-directory: backend
+        run: pytest tests/ -v --tb=short
+        env:
+          PYTHONPATH: .
+
+  # ── Deploy frontend to GitHub Pages ─────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/main'
+    needs: [test-python]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload frontend artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
