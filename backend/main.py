@@ -45,7 +45,34 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown — clearing %d sessions", len(_sessions))
     _sessions.clear()
 
-app = FastAPI(title="RAGForge API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="RAGForge API",
+    version="2.0.0",
+    description="""
+## RAGForge — Document Intelligence API
+
+Upload documents and query them using a hybrid C++ retrieval pipeline.
+
+### Pipeline
+**Chunk → Embed → HNSW ANN → BM25 Hybrid → MMR Diversity → Top-N Chunks**
+
+### Authentication
+All endpoints except `/auth/login` require a Bearer token.
+1. `POST /auth/login` with your password → get a token
+2. Pass `Authorization: Bearer <token>` on all other requests
+3. `POST /auth/logout` to wipe your session and index
+
+### Per-session isolation
+Each login creates an independent index. Multiple users don't share data.
+""",
+    lifespan=lifespan,
+    openapi_tags=[
+        {"name": "auth",     "description": "Login, logout, session management"},
+        {"name": "docs",     "description": "Upload and index documents"},
+        {"name": "query",    "description": "Search and retrieve chunks"},
+        {"name": "index",    "description": "Index management"},
+    ]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,11 +82,11 @@ app.add_middleware(
 )
 
 # ── Auth endpoints (public) ───────────────────────────────────────────────────
-@app.post("/auth/login", response_model=LoginResponse)
+@app.post("/auth/login", response_model=LoginResponse, tags=["auth"])
 async def login(req: LoginRequest):
     return create_login_token(req.password)
 
-@app.post("/auth/logout")
+@app.post("/auth/logout", tags=["auth"])
 async def logout(session_id: str = Depends(get_session_id)):
     drop_session(session_id)
     return {"status": "logged out"}
@@ -95,7 +122,7 @@ class StatusResponse(BaseModel):
     session_id: str
 
 # ── Protected endpoints ───────────────────────────────────────────────────────
-@app.get("/status", response_model=StatusResponse)
+@app.get("/status", response_model=StatusResponse, tags=["index"])
 async def status(session_id: str = Depends(get_session_id)):
     rag   = get_rag(session_id)
     stats = rag.stats()
@@ -106,10 +133,10 @@ async def status(session_id: str = Depends(get_session_id)):
         session_id=session_id[:8],
     )
 
-@app.post("/upload", response_model=IngestResponse)
+@app.post("/upload", response_model=IngestResponse, tags=["docs"])
 async def upload_document(
     file: UploadFile = File(...),
-    session_id: str = Depends(get_session_id)
+    session_id: str = Depends(get_session_id),
 ):
     allowed = {".pdf", ".txt", ".md", ".docx"}
     ext = Path(file.filename).suffix.lower()
@@ -128,7 +155,7 @@ async def upload_document(
     logger.info("[%s] Indexed %s → %d chunks", session_id[:8], file.filename, n)
     return IngestResponse(doc_id=doc_id, filename=file.filename, chunks_indexed=n)
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, tags=["query"])
 async def query_docs(
     req: QueryRequest,
     session_id: str = Depends(get_session_id)
@@ -160,7 +187,7 @@ async def query_docs(
         llm_available=bool(llm_key),
     )
 
-@app.delete("/index")
+@app.delete("/index", tags=["index"])
 async def clear_index(session_id: str = Depends(get_session_id)):
     get_rag(session_id).clear()
     return {"status": "cleared"}
