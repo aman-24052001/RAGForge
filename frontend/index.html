@@ -721,6 +721,70 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://localhost:8000'
   : RENDER_URL;
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+const TOKEN_KEY = 'ragforge_token';
+
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function doLogin() {
+  const pwd = document.getElementById('lock-password').value;
+  const errEl = document.getElementById('lock-error');
+  const btn = document.getElementById('lock-btn');
+  if (!pwd) { errEl.textContent = 'Enter password'; return; }
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Wrong password');
+    sessionStorage.setItem(TOKEN_KEY, d.token);
+    document.getElementById('lock-screen').style.display = 'none';
+    fetchStatus();
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    document.getElementById('lock-password').value = '';
+  }
+  btn.textContent = 'ENTER'; btn.disabled = false;
+}
+
+document.getElementById('lock-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function initAuth() {
+  const token = getToken();
+  // Check if APP_PASSWORD is set by pinging status
+  // If 401 → show lock screen; if 200 → already authed or no auth
+  fetch(`${API}/status`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  }).then(r => {
+    if (r.status === 401) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById('lock-screen').style.display = 'flex';
+    } else {
+      document.getElementById('lock-screen').style.display = 'none';
+      r.json().then(d => {
+        document.getElementById('status-dot').className = 'dot green';
+        document.getElementById('status-text').textContent =
+          `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
+        renderDocs(d.doc_ids, d.total_chunks);
+      });
+    }
+  }).catch(() => {
+    // Backend offline — still show app, fetchStatus handles retry
+    document.getElementById('lock-screen').style.display = 'none';
+  });
+}
+
+
 // ── Status polling ────────────────────────────────────────────────────────────
 let _retries = 0;
 
@@ -930,71 +994,9 @@ document.getElementById('query-input').addEventListener('keydown', e => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-initAuth();
+// Init handled by initAuth()
 setInterval(fetchStatus, 20000);
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-const TOKEN_KEY = 'ragforge_token';
-
-function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
-
-function authHeaders() {
-  const t = getToken();
-  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-}
-
-async function doLogin() {
-  const pwd = document.getElementById('lock-password').value;
-  const errEl = document.getElementById('lock-error');
-  const btn = document.getElementById('lock-btn');
-  if (!pwd) { errEl.textContent = 'Enter password'; return; }
-  btn.textContent = '…'; btn.disabled = true;
-  try {
-    const r = await fetch(`${API}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Wrong password');
-    sessionStorage.setItem(TOKEN_KEY, d.token);
-    document.getElementById('lock-screen').style.display = 'none';
-    fetchStatus();
-  } catch(e) {
-    errEl.textContent = '✗ ' + e.message;
-    document.getElementById('lock-password').value = '';
-  }
-  btn.textContent = 'ENTER'; btn.disabled = false;
-}
-
-document.getElementById('lock-password').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doLogin();
-});
-
-function initAuth() {
-  const token = getToken();
-  // Check if APP_PASSWORD is set by pinging status
-  // If 401 → show lock screen; if 200 → already authed or no auth
-  fetch(`${API}/status`, {
-    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-  }).then(r => {
-    if (r.status === 401) {
-      sessionStorage.removeItem(TOKEN_KEY);
-      document.getElementById('lock-screen').style.display = 'flex';
-    } else {
-      document.getElementById('lock-screen').style.display = 'none';
-      r.json().then(d => {
-        document.getElementById('status-dot').className = 'dot green';
-        document.getElementById('status-text').textContent =
-          `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
-        renderDocs(d.doc_ids, d.total_chunks);
-      });
-    }
-  }).catch(() => {
-    // Backend offline — still show app, fetchStatus handles retry
-    document.getElementById('lock-screen').style.display = 'none';
-  });
-}
+initAuth();
 
 </script>
 </body>
