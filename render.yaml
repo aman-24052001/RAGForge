@@ -1,7 +1,7 @@
 services:
   - type: web
-    name: ragforge-aman
-    env: python
+    name: ragforge-362o
+    runtime: python
     region: singapore
     plan: free
     rootDir: backend
