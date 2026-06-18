@@ -11,8 +11,10 @@ jobs:
   build-cpp:
     name: Build C++ Engine
     runs-on: ubuntu-22.04
+    # Only run on non-bot commits to avoid infinite loop
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     permissions:
-      contents: write   # needed to commit .so back to repo
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -46,21 +48,14 @@ jobs:
           ./test_mmr
           ./test_index
 
-      - name: Commit .so to repo (so Docker can copy it)
+      - name: Commit .so to repo
         run: |
-          # Find the built .so
           SO=$(ls backend/ragforge_core*.so 2>/dev/null | head -1)
-          if [ -z "$SO" ]; then
-            echo "ERROR: No .so found after build"
-            ls -la backend/
-            exit 1
-          fi
+          if [ -z "$SO" ]; then echo "No .so found"; exit 1; fi
           echo "Built: $SO ($(du -sh $SO | cut -f1))"
-
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f "$SO"
-          # Only commit if the .so actually changed
           if git diff --cached --quiet; then
             echo "No change in .so — skipping commit"
           else
@@ -72,34 +67,29 @@ jobs:
   test-python:
     name: Python Backend Tests
     runs-on: ubuntu-22.04
-    needs: [build-cpp]
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main  # get latest including the committed .so
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install backend deps
         working-directory: backend
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt pytest httpx
-
       - name: Run Python tests
         working-directory: backend
         run: pytest tests/ -v --tb=short
         env:
           PYTHONPATH: .
 
-  # ── Deploy frontend to GitHub Pages ──────────────────────────────────────────
+  # ── Deploy frontend (independent of C++ build) ────────────────────────────────
   deploy-frontend:
     name: Deploy Frontend to GitHub Pages
     runs-on: ubuntu-22.04
-    if: github.ref == 'refs/heads/main'
+    if: "github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip ci]')"
     needs: [test-python]
     permissions:
       contents: read
