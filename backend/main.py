@@ -30,12 +30,21 @@ async def lifespan(app: FastAPI):
     global rag
     INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     rag = RAGWrapper()
-    if (INDEX_PATH.parent / (INDEX_PATH.name + ".meta.json")).exists():
-        logger.info("Loading existing index from %s", INDEX_PATH)
-        rag.load(str(INDEX_PATH))
+    meta_file = INDEX_PATH.parent / (INDEX_PATH.name + ".meta.json")
+    py_file   = INDEX_PATH.parent / (INDEX_PATH.name + ".py.json")
+    if meta_file.exists() or py_file.exists():
+        try:
+            logger.info("Loading existing index from %s", INDEX_PATH)
+            rag.load(str(INDEX_PATH))
+        except Exception as e:
+            logger.warning("Failed to load index (starting fresh): %s", e)
+            rag = RAGWrapper()
     yield
-    logger.info("Saving index to %s", INDEX_PATH)
-    rag.save(str(INDEX_PATH))
+    try:
+        logger.info("Saving index to %s", INDEX_PATH)
+        rag.save(str(INDEX_PATH))
+    except Exception as e:
+        logger.warning("Failed to save index: %s", e)
 
 app = FastAPI(title="RAGForge API", version="1.0.0", lifespan=lifespan)
 
@@ -187,6 +196,5 @@ async def query_stream(req: QueryRequest):
 
 @app.delete("/index")
 async def clear_index():
-    global rag
-    rag = RAGWrapper()
+    rag.clear()
     return {"status": "cleared"}

@@ -1,16 +1,15 @@
 services:
   - type: web
-    name: ragforge-api
+    name: ragforge-aman
     env: python
-    region: singapore   # closest free-tier to India
+    region: singapore
     plan: free
-    buildCommand: |
-      pip install -r backend/requirements.txt
-      # Note: C++ .so is pre-built and committed, or fallback to pure-Python mode
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: EMBEDDING_MODEL_PATH
-        value: ./models/minilm/model.onnx
+      - key: PYTHON_VERSION
+        value: "3.11.0"
       - key: INDEX_PATH
         value: /tmp/ragforge_index
       - key: CHUNK_SIZE
@@ -19,8 +18,3 @@ services:
         value: "64"
       - key: MMR_LAMBDA
         value: "0.6"
-      # Add ANTHROPIC_API_KEY or OPENAI_API_KEY via Render dashboard for LLM mode
-    disk:
-      name: ragforge-storage
-      mountPath: /tmp
-      sizeGB: 1

@@ -480,22 +480,34 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const RENDER_URL = 'https://ragforge-aman.onrender.com';
+const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:8000'
-  : (localStorage.getItem('ragforge_api') || 'http://localhost:8000');
+  : RENDER_URL;
 
 // ── Status ────────────────────────────────────────────────────────────────────
+let _coldStartRetries = 0;
+
 async function fetchStatus() {
   try {
-    const r = await fetch(`${API}/status`);
+    const r = await fetch(`${API}/status`, { signal: AbortSignal.timeout(8000) });
     const d = await r.json();
+    _coldStartRetries = 0;
     document.getElementById('status-dot').className = 'dot green';
     document.getElementById('status-text').textContent =
       `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
     renderDocs(d.doc_ids, d.total_chunks);
   } catch {
-    document.getElementById('status-dot').className = 'dot';
-    document.getElementById('status-text').textContent = 'backend offline';
+    _coldStartRetries++;
+    document.getElementById('status-dot').className = 'dot yellow';
+    if (_coldStartRetries <= 4) {
+      document.getElementById('status-text').textContent =
+        `backend waking up… (${_coldStartRetries * 8}s)`;
+      setTimeout(fetchStatus, 8000); // retry faster during cold start
+    } else {
+      document.getElementById('status-dot').className = 'dot';
+      document.getElementById('status-text').textContent = 'backend offline';
+    }
   }
 }
 
