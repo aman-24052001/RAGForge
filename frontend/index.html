@@ -539,9 +539,64 @@ main { padding: 0; }
     flex-direction: column;
   }
 }
+
+/* ── Lock screen ─────────────────────────────────────────────────────────── */
+#lock-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--black);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lock-wrap { padding: 20px; width: 100%; max-width: 360px; }
+.lock-box {
+  background: var(--cream);
+  border: var(--border);
+  box-shadow: 8px 8px 0 var(--yellow);
+  padding: 32px 24px;
+  text-align: center;
+}
+.lock-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.lock-title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 4px; }
+.lock-title span { color: var(--blue); }
+.lock-sub {
+  font-family: var(--mono); font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.15em; color: #666; margin-bottom: 24px;
+}
+.lock-input-wrap { display: flex; border: var(--border); box-shadow: var(--shadow); margin-bottom: 12px; }
+#lock-password {
+  flex: 1; padding: 12px 14px; font-family: var(--sans); font-size: 1rem;
+  border: none; outline: none; background: var(--white); min-width: 0;
+}
+#lock-btn {
+  background: var(--yellow); border: none; border-left: var(--border);
+  padding: 12px 16px; font-family: var(--sans); font-weight: 800;
+  font-size: 0.8rem; cursor: pointer; color: var(--black); flex-shrink: 0;
+}
+#lock-btn:active { background: var(--green); }
+#lock-error { font-family: var(--mono); font-size: 0.7rem; font-weight: 700; color: var(--red); min-height: 18px; }
+
 </style>
 </head>
 <body>
+
+<!-- ── Lock screen ── -->
+<div id="lock-screen" style="display:none">
+  <div class="lock-wrap">
+    <div class="lock-box">
+      <div class="lock-icon">🔒</div>
+      <div class="lock-title">RAG<span>Forge</span></div>
+      <div class="lock-sub">ENTER ACCESS PASSWORD</div>
+      <div class="lock-input-wrap">
+        <input type="password" id="lock-password" placeholder="Password" autocomplete="current-password">
+        <button id="lock-btn" onclick="doLogin()">ENTER</button>
+      </div>
+      <div id="lock-error"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Header ── -->
 <header>
@@ -671,7 +726,7 @@ let _retries = 0;
 
 async function fetchStatus() {
   try {
-    const r = await fetch(`${API}/status`, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`${API}/status`, { signal: AbortSignal.timeout(8000), headers: authHeaders() });
     const d = await r.json();
     _retries = 0;
     document.getElementById('status-dot').className = 'dot green';
@@ -727,7 +782,7 @@ async function uploadFiles(files) {
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+      const r = await fetch(`${API}/upload`, { method: 'POST', body: fd, headers: { 'Authorization': `Bearer ${getToken() || ''}` } });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || 'Upload failed');
       statusEl.className = 'success';
@@ -777,7 +832,7 @@ async function runQuery() {
   try {
     const r = await fetch(`${API}/query`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ query: q, top_k: topK, top_n: topN })
     });
     const d = await r.json();
@@ -875,8 +930,72 @@ document.getElementById('query-input').addEventListener('keydown', e => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-fetchStatus();
+initAuth();
 setInterval(fetchStatus, 20000);
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+const TOKEN_KEY = 'ragforge_token';
+
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function doLogin() {
+  const pwd = document.getElementById('lock-password').value;
+  const errEl = document.getElementById('lock-error');
+  const btn = document.getElementById('lock-btn');
+  if (!pwd) { errEl.textContent = 'Enter password'; return; }
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Wrong password');
+    sessionStorage.setItem(TOKEN_KEY, d.token);
+    document.getElementById('lock-screen').style.display = 'none';
+    fetchStatus();
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    document.getElementById('lock-password').value = '';
+  }
+  btn.textContent = 'ENTER'; btn.disabled = false;
+}
+
+document.getElementById('lock-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function initAuth() {
+  const token = getToken();
+  // Check if APP_PASSWORD is set by pinging status
+  // If 401 → show lock screen; if 200 → already authed or no auth
+  fetch(`${API}/status`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  }).then(r => {
+    if (r.status === 401) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById('lock-screen').style.display = 'flex';
+    } else {
+      document.getElementById('lock-screen').style.display = 'none';
+      r.json().then(d => {
+        document.getElementById('status-dot').className = 'dot green';
+        document.getElementById('status-text').textContent =
+          `${d.total_chunks} chunks · ${d.doc_ids.length} docs`;
+        renderDocs(d.doc_ids, d.total_chunks);
+      });
+    }
+  }).catch(() => {
+    // Backend offline — still show app, fetchStatus handles retry
+    document.getElementById('lock-screen').style.display = 'none';
+  });
+}
+
 </script>
 </body>
 </html>

@@ -1,15 +1,10 @@
 services:
   - type: web
-    name: ragforge-362o
-    runtime: python
+    name: ragforge-wd3z
+    runtime: docker
     region: singapore
     plan: free
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.0"
       - key: INDEX_PATH
         value: /tmp/ragforge_index
       - key: CHUNK_SIZE
@@ -18,3 +13,5 @@ services:
         value: "64"
       - key: MMR_LAMBDA
         value: "0.6"
+      - key: APP_PASSWORD
+        sync: false   # Must be set manually in Render dashboard — never in code
