@@ -1,6 +1,6 @@
 # Build artifacts
 rag_engine/build/
-*.so
+# *.so — ragforge_core.so IS committed (pre-built by CI)
 *.o
 *.a
 
