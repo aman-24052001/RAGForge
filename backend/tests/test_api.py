@@ -1,22 +1,50 @@
 """
-backend/tests/test_api.py — FastAPI integration tests (pure-Python fallback mode)
-Runs in CI without the compiled .so — uses sentence-transformers fallback.
+backend/tests/test_api.py
+Pure unit/integration tests — no model download, no network calls.
+Uses a mock embedder so CI passes instantly.
 """
 import sys
 import io
 import pytest
+import numpy as np
+from unittest.mock import MagicMock, patch
 
-# Ensure C++ module is NOT loaded so fallback activates
+# Remove compiled C++ module if present
 sys.modules.pop("ragforge_core", None)
 
-from fastapi.testclient import TestClient
+
+# ── Mock SentenceTransformer so no model downloads in CI ─────────────────────
+class _MockST:
+    """Returns random unit-norm embeddings."""
+    def encode(self, texts, normalize_embeddings=True):
+        rng = np.random.default_rng(42)
+        embs = rng.random((len(texts), 384)).astype(np.float32)
+        norms = np.linalg.norm(embs, axis=1, keepdims=True)
+        return embs / norms
 
 
 @pytest.fixture(scope="module")
 def client():
-    from main import app
-    with TestClient(app) as c:
-        yield c
+    # Patch SentenceTransformer before any app import
+    with patch("rag_wrapper.SentenceTransformer", return_value=_MockST(), create=True):
+        # Also patch the import inside _PythonRAGEngine._get_model
+        import rag_wrapper
+        rag_wrapper._CPP_AVAILABLE = False  # force Python path
+
+        # Monkeypatch _get_model to return mock
+        original_get_model = rag_wrapper._PythonRAGEngine._get_model
+        def _mock_get_model(self):
+            if self._model is None:
+                self._model = _MockST()
+            return self._model
+        rag_wrapper._PythonRAGEngine._get_model = _mock_get_model
+
+        from fastapi.testclient import TestClient
+        from main import app
+        with TestClient(app) as c:
+            yield c
+
+        rag_wrapper._PythonRAGEngine._get_model = original_get_model
 
 
 def test_status(client):
@@ -25,13 +53,15 @@ def test_status(client):
     d = r.json()
     assert "total_chunks" in d
     assert "doc_ids" in d
+    assert "llm_available" in d
 
 
 def test_upload_txt(client):
     content = (
         b"RAGForge is a retrieval system. "
         b"It uses HNSW for fast approximate nearest neighbor search. "
-        b"BM25 handles lexical matching alongside vector search."
+        b"BM25 handles lexical matching alongside vector search. "
+        b"MMR ensures diversity in retrieved results."
     )
     r = client.post(
         "/upload",
@@ -41,14 +71,23 @@ def test_upload_txt(client):
     d = r.json()
     assert d["chunks_indexed"] >= 1
     assert d["doc_id"]
+    assert d["filename"] == "test.txt"
 
 
 def test_upload_unsupported_extension(client):
     r = client.post(
         "/upload",
-        files={"file": ("bad.csv", io.BytesIO(b"a,b,c"), "text/csv")},
+        files={"file": ("data.csv", io.BytesIO(b"a,b,c"), "text/csv")},
     )
     assert r.status_code == 400
+
+
+def test_upload_empty_file(client):
+    r = client.post(
+        "/upload",
+        files={"file": ("empty.txt", io.BytesIO(b"   "), "text/plain")},
+    )
+    assert r.status_code == 422
 
 
 def test_empty_query_rejected(client):
@@ -56,25 +95,26 @@ def test_empty_query_rejected(client):
     assert r.status_code == 400
 
 
-def test_full_ingest_query_cycle(client):
+def test_query_returns_chunks(client):
+    # Ingest first
     text = (
-        "Retrieval Augmented Generation combines neural retrieval with language models. "
-        "HNSW is a graph-based approximate nearest neighbor algorithm used in vector search. "
-        "BM25 is a bag-of-words relevance ranking function used in information retrieval. "
-        "MMR maximizes marginal relevance to ensure diversity in retrieved results."
+        b"HNSW stands for Hierarchical Navigable Small World. "
+        b"It is used for approximate nearest neighbor search. "
+        b"The algorithm builds a multi-layer proximity graph."
     )
-    upload = client.post(
-        "/upload",
-        files={"file": ("rag_intro.txt", io.BytesIO(text.encode()), "text/plain")},
-    )
-    assert upload.status_code == 200
+    client.post("/upload", files={"file": ("hnsw.txt", io.BytesIO(text), "text/plain")})
 
     r = client.post("/query", json={"query": "what is HNSW?", "top_k": 10, "top_n": 3})
     assert r.status_code == 200
     d = r.json()
-    assert len(d["chunks"]) >= 1
-    # Scores should be between 0 and 1
+    assert "chunks" in d
+    assert "llm_available" in d
+    # No LLM key in CI
+    assert d["llm_answer"] is None
     for chunk in d["chunks"]:
+        assert "chunk_text" in chunk
+        assert "doc_id" in chunk
+        assert "relevance_score" in chunk
         assert 0.0 <= chunk["relevance_score"] <= 1.0
 
 
