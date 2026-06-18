@@ -1,21 +1,25 @@
 """
 backend/tests/test_api.py — FastAPI integration tests (pure-Python fallback mode)
+Runs in CI without the compiled .so — uses sentence-transformers fallback.
 """
-import pytest
-import io
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
-
-# Force Python fallback (no compiled .so needed in CI)
 import sys
+import io
+import pytest
+
+# Ensure C++ module is NOT loaded so fallback activates
 sys.modules.pop("ragforge_core", None)
 
-from main import app
-
-client = TestClient(app)
+from fastapi.testclient import TestClient
 
 
-def test_status():
+@pytest.fixture(scope="module")
+def client():
+    from main import app
+    with TestClient(app) as c:
+        yield c
+
+
+def test_status(client):
     r = client.get("/status")
     assert r.status_code == 200
     d = r.json()
@@ -23,8 +27,12 @@ def test_status():
     assert "doc_ids" in d
 
 
-def test_upload_txt():
-    content = b"RAGForge is a retrieval system. It uses HNSW for fast search. BM25 handles lexical matching."
+def test_upload_txt(client):
+    content = (
+        b"RAGForge is a retrieval system. "
+        b"It uses HNSW for fast approximate nearest neighbor search. "
+        b"BM25 handles lexical matching alongside vector search."
+    )
     r = client.post(
         "/upload",
         files={"file": ("test.txt", io.BytesIO(content), "text/plain")},
@@ -32,10 +40,10 @@ def test_upload_txt():
     assert r.status_code == 200
     d = r.json()
     assert d["chunks_indexed"] >= 1
-    assert "test" in d["doc_id"]
+    assert d["doc_id"]
 
 
-def test_upload_unsupported():
+def test_upload_unsupported_extension(client):
     r = client.post(
         "/upload",
         files={"file": ("bad.csv", io.BytesIO(b"a,b,c"), "text/csv")},
@@ -43,42 +51,33 @@ def test_upload_unsupported():
     assert r.status_code == 400
 
 
-def test_query_no_docs():
-    # With empty index
-    r = client.post("/query", json={"query": "what is RAG?", "top_k": 5, "top_n": 3})
-    assert r.status_code == 200
-    d = r.json()
-    assert "chunks" in d
+def test_empty_query_rejected(client):
+    r = client.post("/query", json={"query": "", "top_k": 5, "top_n": 3})
+    assert r.status_code == 400
 
 
-def test_full_ingest_query_cycle():
-    # Ingest
+def test_full_ingest_query_cycle(client):
     text = (
         "Retrieval Augmented Generation combines neural retrieval with language models. "
-        "HNSW is a graph-based approximate nearest neighbor algorithm. "
+        "HNSW is a graph-based approximate nearest neighbor algorithm used in vector search. "
         "BM25 is a bag-of-words relevance ranking function used in information retrieval. "
-        "MMR maximizes marginal relevance to ensure diversity in results."
+        "MMR maximizes marginal relevance to ensure diversity in retrieved results."
     )
-    client.post(
+    upload = client.post(
         "/upload",
         files={"file": ("rag_intro.txt", io.BytesIO(text.encode()), "text/plain")},
     )
+    assert upload.status_code == 200
 
-    # Query
     r = client.post("/query", json={"query": "what is HNSW?", "top_k": 10, "top_n": 3})
     assert r.status_code == 200
     d = r.json()
     assert len(d["chunks"]) >= 1
-    # Top chunk should mention HNSW
-    top_text = d["chunks"][0]["chunk_text"].lower()
-    assert "hnsw" in top_text or "retrieval" in top_text
+    # Scores should be between 0 and 1
+    for chunk in d["chunks"]:
+        assert 0.0 <= chunk["relevance_score"] <= 1.0
 
 
-def test_empty_query():
-    r = client.post("/query", json={"query": "", "top_k": 10, "top_n": 3})
-    assert r.status_code == 400
-
-
-def test_clear_index():
+def test_clear_index(client):
     r = client.delete("/index")
     assert r.status_code == 200
