@@ -4,7 +4,8 @@ python-multipart>=0.0.9
 pydantic>=2.0.0
 pymupdf>=1.24.0
 python-docx>=1.1.0
-sentence-transformers>=3.0.0   # fallback only (not needed if .so built)
+# fastembed: ONNX-based embeddings, NO torch, ~50MB vs 2GB
+fastembed>=0.4.0
 numpy>=1.26.0
-anthropic>=0.28.0              # optional — LLM synthesis
-openai>=1.30.0                 # optional — alternative LLM
+anthropic>=0.28.0
+openai>=1.30.0

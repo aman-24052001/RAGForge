@@ -1,9 +1,9 @@
 """
 rag_wrapper.py — unified interface over C++ ragforge_core (pybind11) or Python fallback.
 
-Architecture:
-  C++ handles: chunking, HNSW indexing, BM25, hybrid scoring, MMR
-  Python handles: embedding (sentence-transformers, no C++ ORT dependency)
+Embedding backend: fastembed (ONNX Runtime, no torch, ~50MB — fits Render free 512MB RAM)
+C++ handles: chunking, HNSW, BM25, MMR
+Python handles: embedding via fastembed
 """
 
 import os
@@ -21,15 +21,24 @@ except ImportError:
     _CPP_AVAILABLE = False
     logger.warning("ragforge_core.so not found — using pure-Python fallback")
 
-# Shared embedding model (loaded once)
+# Shared fastembed model — loaded once, ONNX-based, no torch
 _model = None
 
 def _get_model():
     global _model
     if _model is None:
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        from fastembed import TextEmbedding
+        _model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
     return _model
+
+def _embed(texts: list[str]) -> np.ndarray:
+    """Embed a list of texts → normalized float32 array (N, 384)."""
+    model = _get_model()
+    # fastembed returns a generator of np arrays
+    embs = np.array(list(model.embed(texts)), dtype=np.float32)
+    # L2 normalize
+    norms = np.linalg.norm(embs, axis=1, keepdims=True)
+    return embs / (norms + 1e-9)
 
 EMB_DIM = 384  # all-MiniLM-L6-v2
 
@@ -49,27 +58,22 @@ class RAGWrapper:
             self._backend = "python"
 
     def ingest(self, text: str, doc_id: str) -> int:
-        model = _get_model()
-
         if self._backend == "cpp":
-            # C++ chunks, Python embeds, C++ indexes
             chunk_texts = self._engine.chunk_text(text, doc_id)
             if not chunk_texts:
                 return 0
-            embeddings = model.encode(chunk_texts, normalize_embeddings=True)
-            doc_ids = [doc_id] * len(chunk_texts)
-            indices = list(range(len(chunk_texts)))
+            embeddings = _embed(chunk_texts)
+            doc_ids  = [doc_id] * len(chunk_texts)
+            indices  = list(range(len(chunk_texts)))
             emb_list = [e.tolist() for e in embeddings]
             self._engine.add_chunks(chunk_texts, doc_ids, indices, emb_list)
             return len(chunk_texts)
         else:
-            return self._engine.ingest(text, doc_id, model)
+            return self._engine.ingest(text, doc_id)
 
     def query(self, query_text: str, top_k: int = 20, top_n: int = 5) -> list[dict]:
-        model = _get_model()
-
         if self._backend == "cpp":
-            q_emb = model.encode([query_text], normalize_embeddings=True)[0].tolist()
+            q_emb   = _embed([query_text])[0].tolist()
             results = self._engine.query(q_emb, query_text, top_k, top_n)
             return [
                 {
@@ -82,13 +86,19 @@ class RAGWrapper:
                 for r in results
             ]
         else:
-            return self._engine.query(query_text, top_k, top_n, model)
+            return self._engine.query(query_text, top_k, top_n)
 
     def save(self, path: str):
-        self._engine.save(path) if self._backend == "cpp" else self._engine.save_index(path)
+        if self._backend == "cpp":
+            self._engine.save(path)
+        else:
+            self._engine.save_index(path)
 
     def load(self, path: str):
-        self._engine.load(path) if self._backend == "cpp" else self._engine.load_index(path)
+        if self._backend == "cpp":
+            self._engine.load(path)
+        else:
+            self._engine.load_index(path)
 
     def clear(self):
         self._engine.clear()
@@ -115,34 +125,31 @@ class _PythonRAGEngine:
         step  = max(1, self.chunk_size - self.chunk_overlap)
         chunks = []
         for i in range(0, len(words), step):
-            chunk_words = words[i : i + self.chunk_size]
             chunks.append({
-                "text":        " ".join(chunk_words),
+                "text":        " ".join(words[i : i + self.chunk_size]),
                 "doc_id":      doc_id,
                 "chunk_index": len(chunks),
             })
         return chunks
 
-    def ingest(self, text: str, doc_id: str, model) -> int:
+    def ingest(self, text: str, doc_id: str) -> int:
         chunks = self._chunk_text(text, doc_id)
-        embs   = model.encode([c["text"] for c in chunks], normalize_embeddings=True)
+        embs   = _embed([c["text"] for c in chunks])
         for c, e in zip(chunks, embs):
             c["embedding"] = e
             self._chunks.append(c)
             self._embeddings.append(e)
         return len(chunks)
 
-    def query(self, query_text: str, top_k: int, top_n: int, model) -> list[dict]:
+    def query(self, query_text: str, top_k: int, top_n: int) -> list[dict]:
         if not self._chunks:
             return []
-        q_emb      = model.encode([query_text], normalize_embeddings=True)[0]
+        q_emb      = _embed([query_text])[0]
         emb_matrix = np.array(self._embeddings)
         scores     = emb_matrix @ q_emb
-
         top_idx    = scores.argsort()[::-1][:top_k]
         candidates = [{"chunk": self._chunks[i], "score": float(scores[i])} for i in top_idx]
 
-        # MMR
         selected, remaining = [], list(candidates)
         for _ in range(min(top_n, len(remaining))):
             if not remaining:
@@ -172,11 +179,9 @@ class _PythonRAGEngine:
 
     def save_index(self, path: str):
         import json
-        data = [
-            {k: v.tolist() if hasattr(v, "tolist") else v for k, v in c.items()}
-            for c in self._chunks
-        ]
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        data = [{k: v.tolist() if hasattr(v, "tolist") else v for k, v in c.items()}
+                for c in self._chunks]
         with open(path + ".py.json", "w") as f:
             json.dump(data, f)
 
