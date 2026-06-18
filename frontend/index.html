@@ -601,9 +601,12 @@ main { padding: 0; }
 <!-- ── Header ── -->
 <header>
   <div class="logo">RAG<span>Forge</span></div>
-  <div class="status-pill">
-    <div class="dot" id="status-dot"></div>
-    <span id="status-text">connecting…</span>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="status-pill">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">connecting…</span>
+    </div>
+    <button id="logout-btn" onclick="doLogout()" style="display:none;background:var(--red);color:var(--white);border:2px solid var(--black);padding:5px 10px;font-family:var(--mono);font-size:0.6rem;font-weight:700;cursor:pointer;box-shadow:2px 2px 0 var(--black)">LOGOUT</button>
   </div>
 </header>
 
@@ -728,13 +731,15 @@ function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
 
 function authHeaders() {
   const t = getToken();
-  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  return t
+    ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
 }
 
 async function doLogin() {
-  const pwd = document.getElementById('lock-password').value;
+  const pwd   = document.getElementById('lock-password').value;
   const errEl = document.getElementById('lock-error');
-  const btn = document.getElementById('lock-btn');
+  const btn   = document.getElementById('lock-btn');
   if (!pwd) { errEl.textContent = 'Enter password'; return; }
   btn.textContent = '…'; btn.disabled = true;
   try {
@@ -747,6 +752,7 @@ async function doLogin() {
     if (!r.ok) throw new Error(d.detail || 'Wrong password');
     sessionStorage.setItem(TOKEN_KEY, d.token);
     document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'block';
     fetchStatus();
   } catch(e) {
     errEl.textContent = '✗ ' + e.message;
@@ -755,22 +761,46 @@ async function doLogin() {
   btn.textContent = 'ENTER'; btn.disabled = false;
 }
 
+async function doLogout() {
+  const token = getToken();
+  if (token) {
+    // Tell backend to wipe the session index
+    fetch(`${API}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).catch(() => {});
+  }
+  // Wipe all local state
+  sessionStorage.removeItem(TOKEN_KEY);
+  document.getElementById('logout-btn').style.display = 'none';
+  // Reset UI
+  clearAll();
+  document.getElementById('docs-list').innerHTML =
+    '<span style="font-family:var(--mono);font-size:0.7rem;color:#888">No documents yet.</span>';
+  document.getElementById('status-dot').className = 'dot';
+  document.getElementById('status-text').textContent = 'connecting…';
+  // Show lock screen
+  document.getElementById('lock-screen').style.display = 'flex';
+  document.getElementById('lock-password').value = '';
+  document.getElementById('lock-error').textContent = '';
+}
+
 document.getElementById('lock-password').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
 
 function initAuth() {
   const token = getToken();
-  // Check if APP_PASSWORD is set by pinging status
-  // If 401 → show lock screen; if 200 → already authed or no auth
   fetch(`${API}/status`, {
     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
   }).then(r => {
     if (r.status === 401) {
       sessionStorage.removeItem(TOKEN_KEY);
       document.getElementById('lock-screen').style.display = 'flex';
+      document.getElementById('logout-btn').style.display = 'none';
     } else {
       document.getElementById('lock-screen').style.display = 'none';
+      document.getElementById('logout-btn').style.display = 'block';
       r.json().then(d => {
         document.getElementById('status-dot').className = 'dot green';
         document.getElementById('status-text').textContent =
@@ -779,11 +809,9 @@ function initAuth() {
       });
     }
   }).catch(() => {
-    // Backend offline — still show app, fetchStatus handles retry
     document.getElementById('lock-screen').style.display = 'none';
   });
 }
-
 
 // ── Status polling ────────────────────────────────────────────────────────────
 let _retries = 0;

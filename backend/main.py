@@ -1,5 +1,7 @@
 """
 RAGForge Backend — FastAPI
+Per-session isolated indexes. Each token = separate RAG instance.
+Logout wipes that session's index from memory.
 """
 
 import os
@@ -8,43 +10,42 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from doc_parser import parse_document
 from rag_wrapper import RAGWrapper
 from llm_client import stream_answer
-from auth import require_auth, create_login_token, LoginRequest, LoginResponse
+from auth import (
+    require_auth, create_login_token, get_session_id,
+    LoginRequest, LoginResponse
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ragforge")
 
-rag: RAGWrapper | None = None
-INDEX_PATH = Path(os.getenv("INDEX_PATH", "./index/ragforge"))
+# ── Per-session RAG store ─────────────────────────────────────────────────────
+# session_id → RAGWrapper instance
+_sessions: dict[str, RAGWrapper] = {}
+
+def get_rag(session_id: str) -> RAGWrapper:
+    if session_id not in _sessions:
+        _sessions[session_id] = RAGWrapper()
+    return _sessions[session_id]
+
+def drop_session(session_id: str):
+    if session_id in _sessions:
+        del _sessions[session_id]
+        logger.info("Session %s wiped", session_id[:8])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global rag
-    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
-    rag = RAGWrapper()
-    meta_file = INDEX_PATH.parent / (INDEX_PATH.name + ".meta.json")
-    py_file   = INDEX_PATH.parent / (INDEX_PATH.name + ".py.json")
-    if meta_file.exists() or py_file.exists():
-        try:
-            logger.info("Loading existing index from %s", INDEX_PATH)
-            rag.load(str(INDEX_PATH))
-        except Exception as e:
-            logger.warning("Failed to load index (starting fresh): %s", e)
-            rag = RAGWrapper()
     yield
-    try:
-        rag.save(str(INDEX_PATH))
-    except Exception as e:
-        logger.warning("Failed to save index: %s", e)
+    logger.info("Shutdown — clearing %d sessions", len(_sessions))
+    _sessions.clear()
 
-app = FastAPI(title="RAGForge API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="RAGForge API", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,12 +54,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Auth endpoint (public) ────────────────────────────────────────────────────
+# ── Auth endpoints (public) ───────────────────────────────────────────────────
 @app.post("/auth/login", response_model=LoginResponse)
 async def login(req: LoginRequest):
     return create_login_token(req.password)
 
-# ── Protected models ──────────────────────────────────────────────────────────
+@app.post("/auth/logout")
+async def logout(session_id: str = Depends(get_session_id)):
+    drop_session(session_id)
+    return {"status": "logged out"}
+
+# ── Models ────────────────────────────────────────────────────────────────────
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 20
@@ -86,39 +92,50 @@ class StatusResponse(BaseModel):
     total_chunks: int
     doc_ids: list[str]
     llm_available: bool
+    session_id: str
 
 # ── Protected endpoints ───────────────────────────────────────────────────────
-@app.get("/status", response_model=StatusResponse, dependencies=[Depends(require_auth)])
-async def status():
+@app.get("/status", response_model=StatusResponse)
+async def status(session_id: str = Depends(get_session_id)):
+    rag   = get_rag(session_id)
     stats = rag.stats()
     return StatusResponse(
         total_chunks=stats["total_chunks"],
         doc_ids=stats["doc_ids"],
         llm_available=bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")),
+        session_id=session_id[:8],
     )
 
-@app.post("/upload", response_model=IngestResponse, dependencies=[Depends(require_auth)])
-async def upload_document(file: UploadFile = File(...)):
+@app.post("/upload", response_model=IngestResponse)
+async def upload_document(
+    file: UploadFile = File(...),
+    session_id: str = Depends(get_session_id)
+):
     allowed = {".pdf", ".txt", ".md", ".docx"}
     ext = Path(file.filename).suffix.lower()
     if ext not in allowed:
         raise HTTPException(400, f"Unsupported file type: {ext}")
-    doc_id   = str(uuid.uuid4())[:8] + "_" + Path(file.filename).stem
-    raw      = await file.read()
+    doc_id = str(uuid.uuid4())[:8] + "_" + Path(file.filename).stem
+    raw    = await file.read()
     try:
         text = parse_document(raw, ext)
     except Exception as e:
         raise HTTPException(422, f"Failed to parse: {e}")
     if not text.strip():
         raise HTTPException(422, "Document produced no text")
-    n = rag.ingest(text, doc_id)
-    logger.info("Indexed %s → %d chunks", file.filename, n)
+    rag = get_rag(session_id)
+    n   = rag.ingest(text, doc_id)
+    logger.info("[%s] Indexed %s → %d chunks", session_id[:8], file.filename, n)
     return IngestResponse(doc_id=doc_id, filename=file.filename, chunks_indexed=n)
 
-@app.post("/query", response_model=QueryResponse, dependencies=[Depends(require_auth)])
-async def query_docs(req: QueryRequest):
+@app.post("/query", response_model=QueryResponse)
+async def query_docs(
+    req: QueryRequest,
+    session_id: str = Depends(get_session_id)
+):
     if not req.query.strip():
         raise HTTPException(400, "Query cannot be empty")
+    rag     = get_rag(session_id)
     results = rag.query(req.query, top_k=req.top_k, top_n=req.top_n)
     chunks  = [
         ChunkResult(
@@ -143,7 +160,7 @@ async def query_docs(req: QueryRequest):
         llm_available=bool(llm_key),
     )
 
-@app.delete("/index", dependencies=[Depends(require_auth)])
-async def clear_index():
-    rag.clear()
+@app.delete("/index")
+async def clear_index(session_id: str = Depends(get_session_id)):
+    get_rag(session_id).clear()
     return {"status": "cleared"}
